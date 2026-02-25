@@ -51,29 +51,15 @@ npm run tauri build
 - 工作流文件：`.github/workflows/release.yml`
 - 触发方式：推送标签（例如 `v0.1.0`）
 - 产物发布到 GitHub Releases
-- CI 会自动生成 `tauri.release.conf.json` 并开启 updater 产物生成
-- 已接入签名相关环境变量：
+- 该工作流只发布安装包，不依赖额外 Secrets/Variables
+
+### 可选：后续启用自动更新签名
+
+- 如果后续要启用 updater（`latest.json` + 签名），再补充：
   - `TAURI_SIGNING_PRIVATE_KEY`
   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-  - `QUICKCV_UPDATE_ENDPOINT`
   - `QUICKCV_UPDATER_PUBKEY`
-
-### 更新配置说明
-
-- 设置页「同步与更新」中可配置：
-  - 更新地址（建议使用 `https://github.com/<owner>/<repo>/releases/latest/download/latest.json`）
-  - 更新签名公钥（`tauri signer generate` 生成）
-- 启动时会自动检查更新；手动按钮会检查并询问是否安装。
-
-生成签名密钥示例：
-
-```bash
-npm run tauri signer generate -- -w "%USERPROFILE%\\.tauri\\quickcv.key"
-```
-
-- 把生成的私钥内容放入 `TAURI_SIGNING_PRIVATE_KEY`。
-- 把私钥密码放入 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。
-- 把输出的公钥填写到设置页，或放入 `QUICKCV_UPDATER_PUBKEY` 作为构建默认值。
+  - `QUICKCV_UPDATE_ENDPOINT`
 
 ## 目录说明
 

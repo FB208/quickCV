@@ -32,43 +32,10 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Validate signing secrets
-        shell: bash
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          QUICKCV_UPDATER_PUBKEY: ${{ vars.QUICKCV_UPDATER_PUBKEY }}
-        run: |
-          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            echo "Missing secret: TAURI_SIGNING_PRIVATE_KEY"
-            exit 1
-          fi
-          if [ -z "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ]; then
-            echo "Missing secret: TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
-            exit 1
-          fi
-          if [ -z "$QUICKCV_UPDATER_PUBKEY" ]; then
-            echo "Missing variable: QUICKCV_UPDATER_PUBKEY"
-            exit 1
-          fi
-
-      - name: Generate release tauri config
-        shell: bash
-        env:
-          QUICKCV_UPDATE_ENDPOINT: ${{ vars.QUICKCV_UPDATE_ENDPOINT }}
-          QUICKCV_UPDATER_PUBKEY: ${{ vars.QUICKCV_UPDATER_PUBKEY }}
-          DEFAULT_UPDATE_ENDPOINT: ${{ format('https://github.com/{0}/releases/latest/download/latest.json', github.repository) }}
-        run: |
-          node -e "const fs=require('fs'); const endpoint=(process.env.QUICKCV_UPDATE_ENDPOINT||process.env.DEFAULT_UPDATE_ENDPOINT).trim(); const pubkey=(process.env.QUICKCV_UPDATER_PUBKEY||'').trim(); const cfg={extends:'./tauri.conf.json',bundle:{createUpdaterArtifacts:true},plugins:{updater:{pubkey,endpoints:[endpoint]}}}; fs.writeFileSync('src-tauri/tauri.release.conf.json', JSON.stringify(cfg,null,2));"
-
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          QUICKCV_UPDATE_ENDPOINT: ${{ vars.QUICKCV_UPDATE_ENDPOINT || format('https://github.com/{0}/releases/latest/download/latest.json', github.repository) }}
-          QUICKCV_UPDATER_PUBKEY: ${{ vars.QUICKCV_UPDATER_PUBKEY }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: quickCV ${{ github.ref_name }}
@@ -77,7 +44,6 @@ jobs:
 
             - 平台：Windows + macOS
             - 触发方式：push tag
-            - 含自动更新产物（latest.json + 签名）
+            - 产物：安装包（MSI / NSIS / DMG）
           releaseDraft: false
           prerelease: false
-          args: --config src-tauri/tauri.release.conf.json
