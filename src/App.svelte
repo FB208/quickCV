@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import {
-    checkUpdate,
-    downloadAndInstallUpdate,
+    checkReleaseVersion,
     getAppVersion,
     loadSettings,
     loadTemplateStore,
+    openReleasePage,
     openOverlay,
     saveSettings,
     saveTemplateStore,
@@ -16,14 +16,14 @@
   import { formatHotkey } from "./lib/hotkey";
   import type {
     Folder,
+    ReleaseCheckResult,
     Settings,
     SyncResult,
     TemplateItem,
-    TemplateStore,
-    UpdateCheckResult
+    TemplateStore
   } from "./lib/types";
 
-  type TabKey = "general" | "templates" | "sync";
+  type TabKey = "general" | "templates" | "system";
   type NoticeType = "info" | "success" | "error";
 
   const now = (): number => Date.now();
@@ -42,10 +42,6 @@
       username: "",
       password: "",
       remoteFile: "quickcv-data.json"
-    },
-    updater: {
-      endpoint: "",
-      pubkey: ""
     },
     lastSyncedVersion: 0,
     deviceId: ""
@@ -77,6 +73,8 @@
   let selectedFolderId = "";
   let selectedTemplateId = "";
   let templateDraft: TemplateItem | null = null;
+  let latestVersion = "--";
+  let checkingVersion = false;
 
   $: activeFolders = store.folders.filter((item) => item.deletedAt === null);
   $: if (!selectedFolderId || !activeFolders.some((item) => item.id === selectedFolderId)) {
@@ -162,7 +160,8 @@
       settings = loadedSettings;
       store = loadedStore;
       appVersion = version;
-      void runStartupUpdateCheck();
+      latestVersion = version;
+      void runReleaseCheck(true);
     } catch (error) {
       setNotice("error", asErrorMessage(error));
     } finally {
@@ -403,10 +402,6 @@
     return details.join("，");
   };
 
-  const runManualUpdateCheck = async (): Promise<void> => {
-    await runUpdateCheck(true, false);
-  };
-
   const previewOverlay = async (): Promise<void> => {
     try {
       await openOverlay();
@@ -415,61 +410,69 @@
     }
   };
 
-  const runStartupUpdateCheck = async (): Promise<void> => {
-    await runUpdateCheck(true, true);
+  const onEnterRun = (event: KeyboardEvent, action: () => Promise<void>): void => {
+    if (event.key !== "Enter") {
+      return;
+    }
+    event.preventDefault();
+    void action();
   };
 
-  const runUpdateCheck = async (promptInstall: boolean, silentIfNoUpdate: boolean): Promise<void> => {
-    const lockUi = !silentIfNoUpdate;
-    if (lockUi) {
-      busy = true;
-    }
-
-    try {
-      const result = await checkUpdate();
-
-      if (result.status === "available") {
-        setNotice("info", result.message);
-        if (promptInstall) {
-          await askAndInstallUpdate(result);
-          return;
-        }
-      }
-
-      if (!silentIfNoUpdate) {
-        const noticeLevel = result.status === "error" ? "error" : "info";
-        setNotice(noticeLevel, result.message);
-      }
-    } catch {
-      if (!silentIfNoUpdate) {
-        setNotice("error", "检查更新失败，请稍后重试");
-      }
-    } finally {
-      if (lockUi) {
-        busy = false;
-      }
-    }
-  };
-
-  const askAndInstallUpdate = async (result: UpdateCheckResult): Promise<void> => {
-    const nextVersion = result.latestVersion || "未知版本";
-    const confirmed = window.confirm(
-      `检测到新版本 ${nextVersion}（当前 ${result.currentVersion}）。是否立即下载并安装？`
-    );
-
-    if (!confirmed) {
-      setNotice("info", "已取消更新安装");
+  const runReleaseCheck = async (silent: boolean): Promise<void> => {
+    if (checkingVersion) {
       return;
     }
 
-    busy = true;
+    checkingVersion = true;
     try {
-      const message = await downloadAndInstallUpdate();
-      setNotice("info", message);
+      const result = await checkReleaseVersion();
+      latestVersion = result.latestVersion || result.currentVersion;
+
+      if (result.status === "error") {
+        if (!silent) {
+          setNotice("error", result.message);
+        }
+        return;
+      }
+
+      if (result.hasUpdate) {
+        setNotice("info", result.message);
+        const question = silent
+          ? `检测到新版本 ${result.latestVersion || "--"}，是否打开发布页下载？`
+          : `发现新版本 ${result.latestVersion || "--"}，是否立即打开发布页？`;
+        if (window.confirm(question)) {
+          await openReleaseByResult(result);
+        }
+        return;
+      }
+
+      if (!silent) {
+        setNotice("info", result.message);
+      }
     } catch (error) {
-      setNotice("error", asErrorMessage(error));
+      if (!silent) {
+        setNotice("error", asErrorMessage(error));
+      }
     } finally {
-      busy = false;
+      checkingVersion = false;
+    }
+  };
+
+  const openReleaseByResult = async (result?: ReleaseCheckResult): Promise<void> => {
+    try {
+      await openReleasePage();
+      if (!result) {
+        setNotice("info", "已打开发布页，请下载最新安装包");
+      }
+    } catch (error) {
+      const fallback = result?.releaseUrl || "https://github.com/FB208/quickCV/releases";
+      window.open(fallback, "_blank", "noopener,noreferrer");
+      if (!result) {
+        setNotice("info", "已通过浏览器打开发布页");
+      }
+      if (error) {
+        // fallback already handled
+      }
     }
   };
 </script>
@@ -494,7 +497,7 @@
       <nav class="tabs" aria-label="设置分组">
         <button class:active={tab === "general"} on:click={() => (tab = "general")}>常规设置</button>
         <button class:active={tab === "templates"} on:click={() => (tab = "templates")}>模板管理</button>
-        <button class:active={tab === "sync"} on:click={() => (tab = "sync")}>同步与更新</button>
+        <button class:active={tab === "system"} on:click={() => (tab = "system")}>系统</button>
       </nav>
 
       {#if tab === "general"}
@@ -510,10 +513,16 @@
             </div>
           </label>
 
-          <label class="checkbox">
-            <input type="checkbox" bind:checked={settings.launchAtStartup} />
-            开机自动启动
-          </label>
+          <div class="startup-card">
+            <div class="startup-text">
+              <strong>开机自动启动</strong>
+              <small>启动后自动在系统托盘待命</small>
+            </div>
+            <label class="switch" title="开机自动启动">
+              <input type="checkbox" bind:checked={settings.launchAtStartup} />
+              <span class="slider"></span>
+            </label>
+          </div>
 
           <h3>WebDAV 配置</h3>
           <label class="field">
@@ -546,19 +555,43 @@
 
       {#if tab === "templates"}
         <section class="panel templates">
+          <section class="template-sync-strip">
+            <div class="sync-stats">
+              <span class="sync-badge">模板数据同步</span>
+              <span>本地版本 {store.datasetVersion || 0}</span>
+              <span>云端基线 {settings.lastSyncedVersion || 0}</span>
+            </div>
+            <div class="sync-actions">
+              <button class="subtle" disabled={busy} on:click={() => void runSync("pull")}>从云端拉取并合并</button>
+              <button class="subtle" disabled={busy} on:click={() => void runSync("push")}>推送模板到云端</button>
+            </div>
+          </section>
+
           <div class="column folders">
             <h2>文件夹</h2>
             <input type="text" bind:value={folderSearch} placeholder="搜索文件夹" />
             <div class="inline-actions">
-              <input type="text" bind:value={newFolderName} placeholder="新建文件夹" />
-              <button disabled={busy} on:click={createFolder}>新增</button>
+              <input
+                type="text"
+                bind:value={newFolderName}
+                placeholder="新建文件夹"
+                on:keydown={(event) => onEnterRun(event, createFolder)}
+              />
+              <button disabled={busy} on:click={createFolder}>
+                <span class="ms-icon">create_new_folder</span>
+                新增
+              </button>
             </div>
             <ul>
               {#each filteredFolders as folder}
                 <li class:active={folder.id === selectedFolderId}>
                   <button class="item" on:click={() => (selectedFolderId = folder.id)}>{folder.name}</button>
-                  <button class="icon" title="重命名" on:click={() => void renameFolder(folder.id)}>改</button>
-                  <button class="icon danger" title="删除" on:click={() => void removeFolder(folder.id)}>删</button>
+                  <button class="icon" title="重命名" on:click={() => void renameFolder(folder.id)}>
+                    <span class="ms-icon">edit</span>
+                  </button>
+                  <button class="icon danger" title="删除" on:click={() => void removeFolder(folder.id)}>
+                    <span class="ms-icon">delete</span>
+                  </button>
                 </li>
               {/each}
             </ul>
@@ -568,8 +601,16 @@
             <h2>模板列表</h2>
             <input type="text" bind:value={templateSearch} placeholder="搜索模板、key、内容" />
             <div class="inline-actions">
-              <input type="text" bind:value={newTemplateName} placeholder="新建模板" />
-              <button disabled={busy} on:click={createTemplate}>新增</button>
+              <input
+                type="text"
+                bind:value={newTemplateName}
+                placeholder="新建模板"
+                on:keydown={(event) => onEnterRun(event, createTemplate)}
+              />
+              <button disabled={busy} on:click={createTemplate}>
+                <span class="ms-icon">add_notes</span>
+                新增
+              </button>
             </div>
             <ul>
               {#each filteredTemplates as item}
@@ -580,7 +621,9 @@
                       <small>key: {item.key}</small>
                     {/if}
                   </button>
-                  <button class="icon danger" title="删除" on:click={() => void removeTemplate(item.id)}>删</button>
+                  <button class="icon danger" title="删除" on:click={() => void removeTemplate(item.id)}>
+                    <span class="ms-icon">delete</span>
+                  </button>
                 </li>
               {/each}
             </ul>
@@ -614,43 +657,31 @@
         </section>
       {/if}
 
-      {#if tab === "sync"}
+      {#if tab === "system"}
         <section class="panel">
-          <h2>同步与更新</h2>
-          <p>当前本地数据版本：{store.datasetVersion || 0}</p>
-          <p>上次同步云端版本：{settings.lastSyncedVersion || 0}</p>
-
-          <div class="actions">
-            <button disabled={busy} on:click={() => void runSync("pull")}>从云端拉取并自动合并</button>
-            <button disabled={busy} on:click={() => void runSync("push")}>推送数据到云端</button>
+          <h2>系统</h2>
+          <div class="version-grid">
+            <div>
+              <span class="version-label">当前软件版本</span>
+              <strong>v{appVersion}</strong>
+            </div>
+            <div>
+              <span class="version-label">最新线上版本</span>
+              <strong>{latestVersion === "--" ? "--" : `v${latestVersion}`}</strong>
+            </div>
           </div>
 
-          <h3>版本更新</h3>
-          <p>应用启动时会自动检查更新，发现新版本会询问你是否安装。</p>
-
-          <label class="field">
-            <span>更新地址（latest.json）</span>
-            <input
-              type="text"
-              bind:value={settings.updater.endpoint}
-              placeholder="https://github.com/owner/repo/releases/latest/download/latest.json"
-            />
-          </label>
-
-          <label class="field">
-            <span>签名公钥</span>
-            <textarea
-              rows="4"
-              bind:value={settings.updater.pubkey}
-              placeholder="粘贴 tauri signer generate 生成的公钥"
-            ></textarea>
-          </label>
-
           <div class="actions">
-            <button disabled={busy} on:click={persistSettings}>保存更新配置</button>
-            <button class="subtle" disabled={busy} on:click={runManualUpdateCheck}>检查并安装更新</button>
+            <button class="subtle" disabled={checkingVersion} on:click={() => void runReleaseCheck(false)}>
+              <span class="ms-icon">system_update</span>
+              {checkingVersion ? "检查中..." : "检查版本"}
+            </button>
+            <button class="subtle" on:click={() => void openReleaseByResult()}>
+              <span class="ms-icon">open_in_new</span>
+              打开 Release 页面
+            </button>
           </div>
-          <p class="hint">提示：更新地址和公钥可在 Windows 调试阶段先手动配置，验证通过后再固化到发布流程。</p>
+          <p class="hint">系统页仅保留版本信息与更新入口；模板数据同步已移到「模板管理」。</p>
         </section>
       {/if}
     </section>
@@ -661,7 +692,7 @@
   .shell {
     width: min(1320px, 100%);
     margin: 0 auto;
-    padding: 16px;
+    padding: 10px;
     color: #132237;
   }
 
@@ -669,48 +700,151 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
-    margin-bottom: 10px;
+    margin-bottom: 6px;
   }
 
   h1 {
     margin: 0;
-    font-size: 28px;
-    letter-spacing: 0.4px;
+    font-size: 24px;
+    letter-spacing: 0.25px;
   }
 
   h2 {
-    margin: 0 0 10px;
-    font-size: 18px;
-  }
-
-  h3 {
-    margin: 12px 0 10px;
+    margin: 0 0 8px;
     font-size: 16px;
   }
 
+  h3 {
+    margin: 8px 0 6px;
+    font-size: 14px;
+  }
+
   p {
-    margin: 0 0 8px;
+    margin: 0 0 6px;
   }
 
   .hint {
-    font-size: 12px;
+    font-size: 11px;
     color: #4c6786;
-    margin-top: 8px;
+    margin-top: 6px;
+  }
+
+  .version-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .version-grid > div {
+    border: 1px solid #c9d8e8;
+    border-radius: 8px;
+    background: #f6fbff;
+    padding: 7px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .version-label {
+    font-size: 11px;
+    color: #5b7695;
+  }
+
+  .version-grid strong {
+    font-size: 14px;
+    color: #12385b;
+  }
+
+  .startup-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border: 1px solid #c9d9e9;
+    border-radius: 9px;
+    background: linear-gradient(135deg, #f7fbff 0%, #eef8f4 100%);
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    gap: 10px;
+  }
+
+  .startup-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  .startup-text strong {
+    font-size: 13px;
+    color: #173b5f;
+    font-weight: 600;
+  }
+
+  .startup-text small {
+    font-size: 11px;
+    color: #5a7594;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .switch {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    flex: 0 0 auto;
+  }
+
+  .switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .slider {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: #c3d2e1;
+    transition: 0.2s ease;
+    cursor: pointer;
+  }
+
+  .slider::before {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 3px;
+    top: 3px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 4px #20384f3a;
+    transition: 0.2s ease;
+  }
+
+  .switch input:checked + .slider {
+    background: #2f76bc;
+  }
+
+  .switch input:checked + .slider::before {
+    transform: translateX(20px);
   }
 
   .version {
     border-radius: 999px;
     background: #dbf4ee;
     color: #1e5f50;
-    padding: 6px 12px;
-    font-size: 13px;
+    padding: 4px 10px;
+    font-size: 12px;
   }
 
   .notice {
-    margin-bottom: 10px;
-    border-radius: 10px;
-    padding: 10px 12px;
-    font-size: 14px;
+    margin-bottom: 6px;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
   }
 
   .notice.info {
@@ -730,62 +864,63 @@
 
   .loading {
     border: 1px solid #d0deeb;
-    border-radius: 12px;
+    border-radius: 10px;
     background: #ffffffb8;
-    padding: 32px;
+    padding: 20px;
     text-align: center;
   }
 
   .content {
     display: grid;
-    grid-template-columns: 160px minmax(0, 1fr);
-    gap: 10px;
-    height: calc(100vh - 120px);
+    grid-template-columns: 146px minmax(0, 1fr);
+    gap: 8px;
+    height: calc(100vh - 92px);
   }
 
   .tabs {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    border-radius: 12px;
-    background: #ffffffba;
+    gap: 6px;
+    border-radius: 10px;
+    background: linear-gradient(180deg, #ffffffd1 0%, #f1f7ffbf 100%);
     border: 1px solid #d0deeb;
-    padding: 10px;
+    padding: 8px;
   }
 
   .tabs button {
     text-align: left;
     border: 1px solid transparent;
-    border-radius: 8px;
-    padding: 10px 12px;
+    border-radius: 7px;
+    padding: 8px 10px;
     background: #f4f9ff;
     color: #26405f;
     cursor: pointer;
+    font-size: 13px;
   }
 
   .tabs button.active {
-    background: #d9ece7;
+    background: linear-gradient(145deg, #d8eee7 0%, #d6eaf9 100%);
     color: #184a3f;
     border-color: #8fc5b7;
   }
 
   .panel {
-    border-radius: 12px;
+    border-radius: 10px;
     border: 1px solid #d0deeb;
-    background: #ffffffe6;
-    padding: 14px;
+    background: linear-gradient(160deg, #ffffffe6 0%, #f6fbffe8 100%);
+    padding: 10px;
     overflow: auto;
   }
 
   .field {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin-bottom: 10px;
+    gap: 4px;
+    margin-bottom: 8px;
   }
 
   .field > span {
-    font-size: 13px;
+    font-size: 12px;
     color: #45607f;
   }
 
@@ -793,11 +928,12 @@
   textarea {
     width: 100%;
     border: 1px solid #b9ccdf;
-    border-radius: 8px;
-    padding: 8px 10px;
+    border-radius: 7px;
+    padding: 6px 8px;
     outline: none;
     background: #fff;
     color: #132237;
+    font-size: 13px;
   }
 
   input:focus,
@@ -808,21 +944,14 @@
 
   .row {
     display: grid;
-    grid-template-columns: 1fr 130px;
-    gap: 8px;
-  }
-
-  .checkbox {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 10px;
+    grid-template-columns: 1fr 118px;
+    gap: 6px;
   }
 
   .actions {
     display: flex;
-    gap: 8px;
-    margin-top: 10px;
+    gap: 6px;
+    margin-top: 8px;
     flex-wrap: wrap;
   }
 
@@ -830,9 +959,14 @@
     border: 1px solid #2e6ba8;
     background: #2f76bc;
     color: #fff;
-    border-radius: 8px;
-    padding: 8px 12px;
+    border-radius: 7px;
+    padding: 6px 10px;
     cursor: pointer;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    line-height: 1;
   }
 
   button.subtle {
@@ -848,26 +982,71 @@
 
   .templates {
     display: grid;
-    grid-template-columns: 280px 320px minmax(0, 1fr);
-    gap: 10px;
+    grid-template-columns: 240px 300px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 8px;
     min-height: 100%;
+  }
+
+  .template-sync-strip {
+    grid-column: 1 / -1;
+    border: 1px solid #c9d8e8;
+    border-radius: 8px;
+    background: linear-gradient(90deg, #f8fcff 0%, #eef7ff 100%);
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .sync-stats {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 11px;
+    color: #4d6d8f;
+  }
+
+  .sync-badge {
+    border: 1px solid #9fc1df;
+    border-radius: 999px;
+    background: #e9f4ff;
+    color: #215179;
+    padding: 2px 8px;
+    font-weight: 600;
+  }
+
+  .sync-actions {
+    display: inline-flex;
+    gap: 6px;
+    flex-wrap: wrap;
   }
 
   .column {
     border: 1px solid #d0deeb;
-    border-radius: 10px;
-    padding: 10px;
-    background: #f8fbff;
+    border-radius: 8px;
+    padding: 8px;
+    background: linear-gradient(180deg, #f8fbff 0%, #f5f9ff 100%);
     display: flex;
     flex-direction: column;
     min-height: 0;
   }
 
+  .column h2 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+
   .inline-actions {
     display: grid;
     grid-template-columns: 1fr auto;
-    gap: 6px;
-    margin-bottom: 8px;
+    gap: 5px;
+    margin-bottom: 6px;
   }
 
   ul {
@@ -876,14 +1055,14 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
     overflow: auto;
   }
 
   li {
     display: grid;
     grid-template-columns: 1fr auto auto;
-    gap: 6px;
+    gap: 4px;
     align-items: center;
   }
 
@@ -897,16 +1076,18 @@
     border: 1px solid #c7d8ea;
     background: #fff;
     color: #1d3858;
-    padding: 7px 10px;
+    padding: 5px 8px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+    font-size: 12px;
+    border-radius: 6px;
   }
 
   .item small {
     color: #4e6a8b;
-    font-size: 11px;
+    font-size: 10px;
   }
 
   li.active .item {
@@ -919,8 +1100,15 @@
     border: 1px solid #9ab6d4;
     background: #edf4ff;
     color: #1f4976;
-    width: 34px;
-    padding: 6px 0;
+    width: 30px;
+    padding: 5px 0;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .icon .ms-icon {
+    font-size: 16px;
   }
 
   .icon.danger {
@@ -934,9 +1122,9 @@
   }
 
   .empty {
-    margin-top: 20px;
+    margin-top: 12px;
     color: #5e7998;
-    font-size: 14px;
+    font-size: 13px;
   }
 
   @media (max-width: 1100px) {
@@ -955,7 +1143,7 @@
     }
 
     .shell {
-      padding: 10px;
+      padding: 8px;
     }
   }
 </style>

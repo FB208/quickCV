@@ -13,7 +13,7 @@ quickCV 是一个面向中文场景的轻量级模板插入管理工具，当前
 - 关闭主窗口后最小化到托盘（隐藏窗口）
 - 浮窗通过全局快捷键触发
 - 无边框浮窗模板选择（搜索、上下选择、左右切换、回车插入、Esc 取消）
-- 自动更新（启动检查、发现更新询问安装、手动检查并安装）
+- 启动自动检查新版本，可手动跳转 GitHub Release 下载更新
 - 剪贴板恢复增强（文本 / HTML / 图片 / 文件列表备份恢复）
 - GitHub Actions tag 自动打包发布工作流
 
@@ -52,14 +52,6 @@ npm run tauri build
 - 触发方式：推送标签（例如 `v0.1.0`）
 - 产物发布到 GitHub Releases
 - 该工作流只发布安装包，不依赖额外 Secrets/Variables
-
-### 可选：后续启用自动更新签名
-
-- 如果后续要启用 updater（`latest.json` + 签名），再补充：
-  - `TAURI_SIGNING_PRIVATE_KEY`
-  - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-  - `QUICKCV_UPDATER_PUBKEY`
-  - `QUICKCV_UPDATE_ENDPOINT`
 
 ## 目录说明
 

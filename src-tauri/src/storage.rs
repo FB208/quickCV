@@ -56,8 +56,6 @@ pub fn load_settings(app: &AppHandle) -> Result<Settings, String> {
     if settings.webdav.remote_file.trim().is_empty() {
         settings.webdav.remote_file = "quickcv-data.json".to_string();
     }
-    settings.updater.endpoint = settings.updater.endpoint.trim().to_string();
-    settings.updater.pubkey = settings.updater.pubkey.trim().to_string();
     save_settings(app, &settings)?;
     Ok(settings)
 }
@@ -68,8 +66,6 @@ pub fn save_settings(app: &AppHandle, settings: &Settings) -> Result<(), String>
     if value.webdav.remote_file.trim().is_empty() {
         value.webdav.remote_file = "quickcv-data.json".to_string();
     }
-    value.updater.endpoint = value.updater.endpoint.trim().to_string();
-    value.updater.pubkey = value.updater.pubkey.trim().to_string();
     let path = settings_path(app)?;
     write_json(path, &value)
 }

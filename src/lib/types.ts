@@ -5,16 +5,10 @@ export interface WebDavSettings {
   remoteFile: string;
 }
 
-export interface UpdaterSettings {
-  endpoint: string;
-  pubkey: string;
-}
-
 export interface Settings {
   shortcut: string;
   launchAtStartup: boolean;
   webdav: WebDavSettings;
-  updater: UpdaterSettings;
   lastSyncedVersion: number;
   deviceId: string;
 }
@@ -57,11 +51,11 @@ export interface OverlayContext {
   query: string;
 }
 
-export type UpdateStatus = "not_configured" | "available" | "latest" | "error";
-
-export interface UpdateCheckResult {
-  status: UpdateStatus;
+export interface ReleaseCheckResult {
+  status: "ok" | "error";
+  hasUpdate: boolean;
   message: string;
   currentVersion: string;
   latestVersion: string | null;
+  releaseUrl: string;
 }

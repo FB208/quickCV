@@ -24,8 +24,8 @@
       {
         "label": "overlay",
         "title": "quickCV 浮窗",
-        "width": 540,
-        "height": 360,
+        "width": 688,
+        "height": 448,
         "visible": false,
         "resizable": false,
         "decorations": false,
@@ -49,11 +49,5 @@
       "icons/icon.ico",
       "icons/icon.icns"
     ]
-  },
-  "plugins": {
-    "updater": {
-      "pubkey": "",
-      "endpoints": []
-    }
   }
 }

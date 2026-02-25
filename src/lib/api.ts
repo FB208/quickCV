@@ -1,9 +1,9 @@
 import type {
   OverlayContext,
+  ReleaseCheckResult,
   Settings,
   SyncResult,
-  TemplateStore,
-  UpdateCheckResult
+  TemplateStore
 } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -51,12 +51,12 @@ export const getAppVersion = async (): Promise<string> => {
   return invokeTauri<string>("get_app_version");
 };
 
-export const checkUpdate = async (): Promise<UpdateCheckResult> => {
-  return invokeTauri<UpdateCheckResult>("check_update");
+export const checkReleaseVersion = async (): Promise<ReleaseCheckResult> => {
+  return invokeTauri<ReleaseCheckResult>("check_release_version");
 };
 
-export const downloadAndInstallUpdate = async (): Promise<string> => {
-  return invokeTauri<string>("download_and_install_update");
+export const openReleasePage = async (): Promise<void> => {
+  return invokeTauri<void>("open_release_page");
 };
 
 export const openOverlay = async (context?: Partial<OverlayContext>): Promise<void> => {

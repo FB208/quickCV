@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { closeOverlay, getOverlayContext, insertTemplate, loadTemplateStore } from "./lib/api";
   import type { OverlayContext, TemplateItem, TemplateStore } from "./lib/types";
 
@@ -21,6 +22,7 @@
   let busy = false;
   let hint = "输入关键词搜索模板";
   let searchInput: HTMLInputElement | null = null;
+  const currentWindow = getCurrentWindow();
 
   $: keyword = query.trim().toLowerCase();
   $: activeFolders = store.folders.filter((item) => item.deletedAt === null);
@@ -235,15 +237,35 @@
     if (!oneLine) {
       return "(空内容)";
     }
-    if (oneLine.length <= 48) {
+    if (oneLine.length <= 72) {
       return oneLine;
     }
-    return `${oneLine.slice(0, 48)}...`;
+    return `${oneLine.slice(0, 72)}...`;
+  };
+
+  const startDrag = async (event: PointerEvent): Promise<void> => {
+    if (event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    try {
+      await currentWindow.startDragging();
+    } catch {
+      // 忽略拖动失败，不影响主流程
+    }
   };
 </script>
 
 <main class="overlay">
   <section class="panel">
+    <div class="drag-bar" data-tauri-drag-region on:pointerdown={startDrag}>
+      <span class="drag-title" data-tauri-drag-region>
+        <span class="ms-icon" data-tauri-drag-region>drag_indicator</span>
+        quickCV 快捷模板
+      </span>
+      <span data-tauri-drag-region>可拖动浮窗</span>
+    </div>
+
     <header class="head">
       <input
         bind:this={searchInput}
@@ -253,6 +275,13 @@
       />
       <button class="ghost" disabled={busy} on:click={() => void cancelOverlay()}>Esc</button>
     </header>
+
+    <div class="meta">
+      <span>文件夹 {filteredFolders.length}</span>
+      <span>模板 {filteredTemplates.length}</span>
+      <span>{hint}</span>
+      <span>Enter 插入 · Esc 取消</span>
+    </div>
 
     {#if loading}
       <div class="loading">加载模板中...</div>
@@ -281,10 +310,10 @@
                   <div class="template-row">
                     <strong>{template.name}</strong>
                     {#if template.key}
-                      <span>key: {template.key}</span>
+                      <span class="key">{template.key}</span>
                     {/if}
+                    <small>{compact(template.content)}</small>
                   </div>
-                  <small>{compact(template.content)}</small>
                 </button>
               </li>
             {/each}
@@ -292,11 +321,6 @@
         </section>
       </section>
     {/if}
-
-    <footer class="tips">
-      <span>{hint}</span>
-      <span>上/下选择，左/右切换，Enter 插入，Esc 取消</span>
-    </footer>
   </section>
 </main>
 
@@ -312,32 +336,60 @@
   }
 
   .panel {
-    width: min(720px, calc(100vw - 24px));
-    height: min(420px, calc(100vh - 24px));
-    border-radius: 12px;
+    width: 100%;
+    height: 100%;
+    border-radius: 10px;
     border: 1px solid #96b9d0;
     background: linear-gradient(160deg, #f1faf8 0%, #f2f7ff 100%);
     box-shadow: 0 14px 44px #214d6f3a;
     backdrop-filter: blur(12px);
-    padding: 10px;
+    padding: 6px;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .drag-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     gap: 8px;
+    border: 1px dashed #9ebdd3;
+    border-radius: 7px;
+    background: #eaf4ffcc;
+    color: #3f6286;
+    font-size: 10.5px;
+    padding: 3px 7px;
+    cursor: move;
+    user-select: none;
+  }
+
+  .drag-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 600;
+    color: #2d557c;
+  }
+
+  .drag-title .ms-icon {
+    font-size: 14px;
   }
 
   .head {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
+    gap: 5px;
   }
 
   input {
     border: 1px solid #a9c3d8;
-    border-radius: 8px;
-    padding: 8px 10px;
+    border-radius: 7px;
+    padding: 6px 9px;
     background: #ffffffd8;
     color: #1a3652;
     outline: none;
+    font-size: 13px;
   }
 
   input:focus {
@@ -345,21 +397,31 @@
     box-shadow: 0 0 0 2px #d8e9fb;
   }
 
+  .meta {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    font-size: 10.5px;
+    color: #527091;
+    padding: 0 3px;
+    line-height: 1.2;
+  }
+
   .body {
     min-height: 0;
     display: grid;
-    grid-template-columns: 220px minmax(0, 1fr);
-    gap: 8px;
+    grid-template-columns: 190px minmax(0, 1fr);
+    gap: 5px;
   }
 
   .pane {
     border: 1px solid #c4d8e8;
-    border-radius: 10px;
+    border-radius: 8px;
     background: #ffffffcc;
-    padding: 8px;
+    padding: 5px;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
-    gap: 6px;
+    gap: 4px;
     min-height: 0;
   }
 
@@ -370,7 +432,7 @@
 
   h2 {
     margin: 0;
-    font-size: 13px;
+    font-size: 12px;
     color: #466b8f;
     font-weight: 600;
   }
@@ -381,7 +443,7 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 3px;
     overflow: auto;
   }
 
@@ -389,10 +451,10 @@
     width: 100%;
     text-align: left;
     border: 1px solid #d0deea;
-    border-radius: 8px;
+    border-radius: 7px;
     background: #fff;
     color: #1d3a58;
-    padding: 7px 8px;
+    padding: 4px 6px;
     cursor: pointer;
   }
 
@@ -403,73 +465,67 @@
   }
 
   .template-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    align-items: center;
+    gap: 5px;
   }
 
   strong {
-    font-size: 13px;
+    font-size: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
   }
 
-  span {
-    font-size: 11px;
+  .key {
+    font-size: 10px;
+    border: 1px solid #b5cbe0;
+    border-radius: 10px;
+    padding: 1px 5px;
+    background: #f0f7ff;
     color: #4c6f8f;
     white-space: nowrap;
   }
 
   small {
-    display: block;
-    margin-top: 2px;
+    display: inline-block;
+    margin-top: 0;
     color: #4f6f8d;
-    font-size: 11px;
+    font-size: 10.5px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .tips {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    font-size: 11px;
-    color: #537291;
+    min-width: 0;
   }
 
   .loading {
     display: grid;
     place-items: center;
     border: 1px dashed #9cb8cc;
-    border-radius: 10px;
+    border-radius: 8px;
     color: #44627f;
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .ghost {
     border: 1px solid #9fbad2;
-    border-radius: 8px;
+    border-radius: 7px;
     background: #eff6ff;
     color: #2a5078;
-    padding: 0 10px;
+    padding: 0 9px;
     cursor: pointer;
+    font-size: 12px;
   }
 
-  @media (max-width: 780px) {
+  @media (max-width: 620px) {
     .panel {
-      width: calc(100vw - 14px);
-      height: calc(100vh - 14px);
-      padding: 8px;
+      padding: 5px;
     }
 
     .body {
       grid-template-columns: 1fr;
-    }
-
-    .tips {
-      flex-direction: column;
     }
   }
 </style>

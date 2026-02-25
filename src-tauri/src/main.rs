@@ -11,16 +11,16 @@ use std::thread;
 use std::time::Duration;
 
 use arboard::{Clipboard, ImageData};
-use models::{Settings, SyncResult, TemplateStore, UpdateCheckResult, WebDavSettings};
+use models::{ReleaseCheckResult, Settings, SyncResult, TemplateStore, WebDavSettings};
 use rdev::{simulate, EventType, Key};
-use reqwest::Url;
+use reqwest::header::{ACCEPT, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Position, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as _};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt as _, ShortcutState};
-use tauri_plugin_updater::UpdaterExt as _;
+use tauri_plugin_opener::OpenerExt as _;
 
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::{HWND, POINT};
@@ -28,16 +28,26 @@ use windows::Win32::Foundation::{HWND, POINT};
 use windows::Win32::Graphics::Gdi::ClientToScreen;
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId, SetForegroundWindow,
+    GetCursorPos, GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId,
+    SetForegroundWindow,
     GUITHREADINFO,
 };
 
 const CLIPBOARD_RESTORE_DELAY_MS: u64 = 140;
+const OVERLAY_SAFE_MARGIN: i32 = 6;
+const RELEASE_API_URL: &str = "https://api.github.com/repos/FB208/quickCV/releases/latest";
+const RELEASE_PAGE_URL: &str = "https://github.com/FB208/quickCV/releases";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OverlayContext {
     query: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubLatestRelease {
+    tag_name: String,
+    html_url: String,
 }
 
 impl Default for OverlayContext {
@@ -196,75 +206,74 @@ async fn sync_push(app: AppHandle) -> Result<SyncResult, String> {
 }
 
 #[tauri::command]
-async fn check_update(app: AppHandle) -> Result<UpdateCheckResult, String> {
-    let settings = storage::load_settings(&app)?;
+async fn check_release_version(app: AppHandle) -> Result<ReleaseCheckResult, String> {
     let current_version = app.package_info().version.to_string();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()
+        .map_err(|error| format!("创建版本检查客户端失败: {error}"))?;
 
-    if settings.updater.endpoint.trim().is_empty() || settings.updater.pubkey.trim().is_empty() {
-        return Ok(UpdateCheckResult {
-            status: "not_configured".to_string(),
-            message: "未配置更新地址或公钥，请在设置中补全后再检查更新。".to_string(),
-            current_version,
-            latest_version: None,
-        });
-    }
+    let response = client
+        .get(RELEASE_API_URL)
+        .header(USER_AGENT, "quickcv-desktop")
+        .header(ACCEPT, "application/vnd.github+json")
+        .send()
+        .await;
 
-    let updater = build_configured_updater(&app, &settings)?;
-    let result = match updater.check().await {
+    let response = match response {
         Ok(value) => value,
         Err(error) => {
-            return Ok(UpdateCheckResult {
+            return Ok(ReleaseCheckResult {
                 status: "error".to_string(),
-                message: format!(
-                    "检查更新失败：{}。请确认更新地址可访问、签名公钥正确。",
-                    error
-                ),
+                has_update: false,
+                message: format!("检查更新失败: {error}"),
                 current_version,
                 latest_version: None,
+                release_url: RELEASE_PAGE_URL.to_string(),
             });
         }
     };
 
-    if let Some(update) = result {
-        return Ok(UpdateCheckResult {
-            status: "available".to_string(),
-            message: format!(
-                "发现新版本 {}（当前 {}）",
-                update.version, update.current_version
-            ),
-            current_version: update.current_version,
-            latest_version: Some(update.version),
+    if !response.status().is_success() {
+        return Ok(ReleaseCheckResult {
+            status: "error".to_string(),
+            has_update: false,
+            message: format!("检查更新失败，状态码: {}", response.status()),
+            current_version,
+            latest_version: None,
+            release_url: RELEASE_PAGE_URL.to_string(),
         });
     }
 
-    Ok(UpdateCheckResult {
-        status: "latest".to_string(),
-        message: "当前已经是最新版本。".to_string(),
+    let payload = response
+        .json::<GithubLatestRelease>()
+        .await
+        .map_err(|error| format!("解析版本信息失败: {error}"))?;
+
+    let latest = normalize_version(&payload.tag_name);
+    let has_update = version_compare(&latest, &current_version) > 0;
+
+    let message = if has_update {
+        format!("发现新版本 {}（当前 {}）", latest, current_version)
+    } else {
+        format!("当前已是最新版本（{}）", current_version)
+    };
+
+    Ok(ReleaseCheckResult {
+        status: "ok".to_string(),
+        has_update,
+        message,
         current_version,
-        latest_version: None,
+        latest_version: Some(latest),
+        release_url: payload.html_url,
     })
 }
 
 #[tauri::command]
-async fn download_and_install_update(app: AppHandle) -> Result<String, String> {
-    let settings = storage::load_settings(&app)?;
-    let updater = build_configured_updater(&app, &settings)?;
-
-    let Some(update) = updater
-        .check()
-        .await
-        .map_err(|error| format!("检查更新失败: {error}"))?
-    else {
-        return Ok("当前已经是最新版本。".to_string());
-    };
-
-    let version = update.version.clone();
-    update
-        .download_and_install(|_, _| {}, || {})
-        .await
-        .map_err(|error| format!("下载或安装更新失败: {error}"))?;
-
-    Ok(format!("版本 {version} 已开始安装，应用将自动退出。"))
+fn open_release_page(app: AppHandle) -> Result<(), String> {
+    app.opener()
+        .open_url(RELEASE_PAGE_URL, None::<&str>)
+        .map_err(|error| format!("打开发布页失败: {error}"))
 }
 
 #[tauri::command]
@@ -299,28 +308,6 @@ fn get_overlay_context(app: AppHandle) -> Result<OverlayContext, String> {
         .lock()
         .map(|item| item.clone())
         .map_err(|_| "读取浮窗上下文失败".to_string())
-}
-
-fn build_configured_updater(
-    app: &AppHandle,
-    settings: &Settings,
-) -> Result<tauri_plugin_updater::Updater, String> {
-    let endpoint_text = settings.updater.endpoint.trim();
-    let pubkey = settings.updater.pubkey.trim();
-
-    if endpoint_text.is_empty() || pubkey.is_empty() {
-        return Err("请先配置更新地址与签名公钥".to_string());
-    }
-
-    let endpoint =
-        Url::parse(endpoint_text).map_err(|error| format!("更新地址格式错误: {error}"))?;
-
-    app.updater_builder()
-        .pubkey(pubkey.to_string())
-        .endpoints(vec![endpoint])
-        .map_err(|error| format!("更新地址配置失败: {error}"))?
-        .build()
-        .map_err(|error| format!("更新器初始化失败: {error}"))
 }
 
 #[tauri::command]
@@ -368,16 +355,19 @@ fn show_overlay_window_with_context(
     }
 
     if let Some(window) = app.get_webview_window("overlay") {
-        if let Some((x, y)) = caret_screen_position() {
-            let _ = window.set_position(Position::Physical(PhysicalPosition {
-                x: x + 8,
-                y: y + 14,
-            }));
-        }
-
         window
             .show()
             .map_err(|error| format!("显示浮窗失败: {error}"))?;
+
+        let anchor = caret_screen_position()
+            .or_else(cursor_screen_position)
+            .unwrap_or((OVERLAY_SAFE_MARGIN, OVERLAY_SAFE_MARGIN));
+        let (clamped_x, clamped_y) = clamp_overlay_position(app, &window, anchor.0 + 8, anchor.1 + 14);
+        let _ = window.set_position(Position::Physical(PhysicalPosition {
+            x: clamped_x,
+            y: clamped_y,
+        }));
+
         window
             .set_focus()
             .map_err(|error| format!("聚焦浮窗失败: {error}"))?;
@@ -388,6 +378,59 @@ fn show_overlay_window_with_context(
         .map_err(|error| format!("发送浮窗上下文失败: {error}"))?;
 
     Ok(())
+}
+
+fn clamp_overlay_position(
+    app: &AppHandle,
+    window: &tauri::WebviewWindow,
+    desired_x: i32,
+    desired_y: i32,
+) -> (i32, i32) {
+    let mut x = desired_x;
+    let mut y = desired_y;
+
+    let monitor = app
+        .available_monitors()
+        .ok()
+        .and_then(|monitors| {
+            monitors
+                .into_iter()
+                .find(|item| point_in_monitor(item, desired_x, desired_y))
+        })
+        .or_else(|| app.primary_monitor().ok().flatten())
+        .or_else(|| window.current_monitor().ok().flatten());
+
+    let Some(monitor) = monitor else {
+        return (x, y);
+    };
+
+    let monitor_position = monitor.position();
+    let monitor_size = monitor.size();
+    let window_size = window.outer_size().ok();
+
+    let width = window_size.map(|size| size.width as i32).unwrap_or(688);
+    let height = window_size.map(|size| size.height as i32).unwrap_or(448);
+
+    let min_x = monitor_position.x + OVERLAY_SAFE_MARGIN;
+    let min_y = monitor_position.y + OVERLAY_SAFE_MARGIN;
+    let max_x = monitor_position.x + monitor_size.width as i32 - width - OVERLAY_SAFE_MARGIN;
+    let max_y = monitor_position.y + monitor_size.height as i32 - height - OVERLAY_SAFE_MARGIN;
+
+    let safe_max_x = max_x.max(min_x);
+    let safe_max_y = max_y.max(min_y);
+    x = x.clamp(min_x, safe_max_x);
+    y = y.clamp(min_y, safe_max_y);
+
+    (x, y)
+}
+
+fn point_in_monitor(monitor: &tauri::Monitor, x: i32, y: i32) -> bool {
+    let position = monitor.position();
+    let size = monitor.size();
+    let right = position.x + size.width as i32;
+    let bottom = position.y + size.height as i32;
+
+    x >= position.x && x <= right && y >= position.y && y <= bottom
 }
 
 fn hide_overlay_window(app: &AppHandle) -> tauri::Result<()> {
@@ -405,6 +448,39 @@ fn hide_overlay_window(app: &AppHandle) -> tauri::Result<()> {
     }
 
     Ok(())
+}
+
+fn normalize_version(value: &str) -> String {
+    value
+        .trim()
+        .trim_start_matches('v')
+        .trim_start_matches('V')
+        .to_string()
+}
+
+fn version_compare(left: &str, right: &str) -> i32 {
+    let left_parts: Vec<i32> = normalize_version(left)
+        .split('.')
+        .map(|part| part.parse::<i32>().unwrap_or(0))
+        .collect();
+    let right_parts: Vec<i32> = normalize_version(right)
+        .split('.')
+        .map(|part| part.parse::<i32>().unwrap_or(0))
+        .collect();
+
+    let max_len = left_parts.len().max(right_parts.len());
+    for index in 0..max_len {
+        let left_value = left_parts.get(index).copied().unwrap_or(0);
+        let right_value = right_parts.get(index).copied().unwrap_or(0);
+        if left_value > right_value {
+            return 1;
+        }
+        if left_value < right_value {
+            return -1;
+        }
+    }
+
+    0
 }
 
 fn register_main_shortcut(app: &AppHandle, shortcut: &str) -> Result<(), String> {
@@ -639,11 +715,25 @@ fn caret_screen_position() -> Option<(i32, i32)> {
     None
 }
 
+#[cfg(target_os = "windows")]
+fn cursor_screen_position() -> Option<(i32, i32)> {
+    let mut point = POINT::default();
+    if unsafe { GetCursorPos(&mut point) }.is_ok() {
+        Some((point.x, point.y))
+    } else {
+        None
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn cursor_screen_position() -> Option<(i32, i32)> {
+    None
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -695,8 +785,8 @@ fn main() {
             test_webdav,
             sync_pull,
             sync_push,
-            check_update,
-            download_and_install_update,
+            check_release_version,
+            open_release_page,
             open_overlay,
             close_overlay,
             get_overlay_context,

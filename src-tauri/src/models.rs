@@ -24,32 +24,10 @@ impl Default for WebDavSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
-pub struct UpdaterSettings {
-    pub endpoint: String,
-    pub pubkey: String,
-}
-
-impl Default for UpdaterSettings {
-    fn default() -> Self {
-        Self {
-            endpoint: option_env!("QUICKCV_UPDATE_ENDPOINT")
-                .unwrap_or_default()
-                .to_string(),
-            pubkey: option_env!("QUICKCV_UPDATER_PUBKEY")
-                .unwrap_or_default()
-                .to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
 pub struct Settings {
     pub shortcut: String,
     pub launch_at_startup: bool,
     pub webdav: WebDavSettings,
-    pub updater: UpdaterSettings,
     pub last_synced_version: i64,
     pub device_id: String,
 }
@@ -60,7 +38,6 @@ impl Default for Settings {
             shortcut: "Ctrl+Shift+Space".to_string(),
             launch_at_startup: false,
             webdav: WebDavSettings::default(),
-            updater: UpdaterSettings::default(),
             last_synced_version: 0,
             device_id: String::new(),
         }
@@ -121,11 +98,13 @@ pub struct SyncResult {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UpdateCheckResult {
+pub struct ReleaseCheckResult {
     pub status: String,
+    pub has_update: bool,
     pub message: String,
     pub current_version: String,
     pub latest_version: Option<String>,
+    pub release_url: String,
 }
 
 #[derive(Debug, Clone)]
