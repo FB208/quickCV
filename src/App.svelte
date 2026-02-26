@@ -6,6 +6,7 @@
     loadSettings,
     loadTemplateStore,
     openReleasePage,
+    openConfigFolder,
     openOverlay,
     saveSettings,
     saveTemplateStore,
@@ -412,6 +413,14 @@
     }
   };
 
+  const openConfigFolderHandler = async (): Promise<void> => {
+    try {
+      await openConfigFolder();
+    } catch (error) {
+      setNotice("error", asErrorMessage(error));
+    }
+  };
+
   const onEnterRun = (event: KeyboardEvent, action: () => Promise<void>): void => {
     if (event.key !== "Enter") {
       return;
@@ -532,6 +541,7 @@
             <div class="row">
               <input type="text" value={recordingShortcut ? "请按下快捷键..." : settings.shortcut} readonly />
               <button disabled={busy} on:click={() => (recordingShortcut = true)}>
+                <span class="ms-icon">keyboard</span>
                 {recordingShortcut ? "录制中" : "录制快捷键"}
               </button>
             </div>
@@ -769,6 +779,10 @@
             <button class="subtle" on:click={() => void openReleaseByResult()}>
               <span class="ms-icon">open_in_new</span>
               打开 Release 页面
+            </button>
+            <button class="subtle" on:click={() => void openConfigFolderHandler()}>
+              <span class="ms-icon">folder_open</span>
+              打开配置文件
             </button>
           </div>
           <p class="hint">系统页仅保留版本信息与更新入口；模板数据同步已移到「模板管理」。</p>
@@ -1111,7 +1125,7 @@
 
   .row {
     display: grid;
-    grid-template-columns: 1fr 118px;
+    grid-template-columns: 1fr auto;
     gap: 6px;
   }
 
@@ -1132,6 +1146,7 @@
     font-size: 12px;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 4px;
     line-height: 1;
   }

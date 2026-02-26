@@ -59,6 +59,10 @@ export const openReleasePage = async (): Promise<void> => {
   return invokeTauri<void>("open_release_page");
 };
 
+export const openConfigFolder = async (): Promise<void> => {
+  return invokeTauri<void>("open_config_folder");
+};
+
 export const openOverlay = async (context?: Partial<OverlayContext>): Promise<void> => {
   return invokeTauri<void>("open_overlay", {
     query: context?.query

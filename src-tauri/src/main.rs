@@ -278,6 +278,14 @@ fn open_release_page(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_config_folder(app: AppHandle) -> Result<(), String> {
+    let dir = storage::app_data_dir(&app)?;
+    app.opener()
+        .open_path(dir.to_string_lossy().to_string(), None::<&str>)
+        .map_err(|error| format!("打开配置文件夹失败: {error}"))
+}
+
+#[tauri::command]
 fn open_overlay(app: AppHandle, query: Option<String>) -> Result<(), String> {
     show_overlay_window_with_context(
         &app,
@@ -913,7 +921,7 @@ fn imm_caret_screen_position(hwnd_raw: Option<isize>) -> Option<(i32, i32)> {
             None
         };
 
-        ImmReleaseContext(hwnd, himc);
+        let _ = ImmReleaseContext(hwnd, himc);
         result
     }
 }
@@ -1008,6 +1016,7 @@ fn main() {
             sync_push,
             check_release_version,
             open_release_page,
+            open_config_folder,
             open_overlay,
             close_overlay,
             set_overlay_dragging,
