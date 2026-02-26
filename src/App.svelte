@@ -528,61 +528,90 @@
   {:else}
     <section class="content">
       <nav class="tabs" aria-label="设置分组">
-        <button class:active={tab === "general"} on:click={() => (tab = "general")}>常规设置</button>
-        <button class:active={tab === "templates"} on:click={() => (tab = "templates")}>模板管理</button>
-        <button class:active={tab === "system"} on:click={() => (tab = "system")}>系统</button>
+        <button class="tab-btn" class:active={tab === "general"} on:click={() => (tab = "general")}>
+          <span class="ms-icon">tune</span>常规设置
+        </button>
+        <button class="tab-btn" class:active={tab === "templates"} on:click={() => (tab = "templates")}>
+          <span class="ms-icon">dashboard</span>模板管理
+        </button>
+        <button class="tab-btn" class:active={tab === "system"} on:click={() => (tab = "system")}>
+          <span class="ms-icon">computer</span>系统
+        </button>
       </nav>
 
       {#if tab === "general"}
-        <section class="panel">
-          <h2>常规设置</h2>
-          <label class="field">
-            <span>全局快捷键</span>
-            <div class="row">
-              <input type="text" value={recordingShortcut ? "请按下快捷键..." : settings.shortcut} readonly />
-              <button disabled={busy} on:click={() => (recordingShortcut = true)}>
-                <span class="ms-icon">keyboard</span>
-                {recordingShortcut ? "录制中" : "录制快捷键"}
-              </button>
-            </div>
-          </label>
-
-          <div class="startup-card">
-            <div class="startup-text">
-              <strong>开机自动启动</strong>
-              <small>启动后自动在系统托盘待命</small>
-            </div>
-            <label class="switch" title="开机自动启动">
-              <input type="checkbox" bind:checked={settings.launchAtStartup} />
-              <span class="slider"></span>
-            </label>
+        <section class="panel panel-page">
+          <div class="page-head">
+            <h2><span class="ms-icon">tune</span>常规设置</h2>
+            <p>统一管理快捷键、启动行为与 WebDAV 同步参数。</p>
           </div>
 
-          <h3>WebDAV 配置</h3>
-          <label class="field">
-            <span>地址</span>
-            <input type="text" bind:value={settings.webdav.url} placeholder="https://dav.example.com/path" />
-          </label>
+          <div class="general-grid">
+            <section class="general-card">
+              <h3 class="card-title"><span class="ms-icon">keyboard</span>快捷入口</h3>
+              <label class="qc-field">
+                <span>全局快捷键</span>
+                <div class="row">
+                  <input class="qc-input" type="text" value={recordingShortcut ? "请按下快捷键..." : settings.shortcut} readonly />
+                  <button class="qc-btn" disabled={busy} on:click={() => (recordingShortcut = true)}>
+                    <span class="ms-icon">keyboard</span>
+                    {recordingShortcut ? "录制中" : "录制快捷键"}
+                  </button>
+                </div>
+              </label>
 
-          <label class="field">
-            <span>用户名</span>
-            <input type="text" bind:value={settings.webdav.username} autocomplete="off" />
-          </label>
+              <div class="startup-card">
+                <div class="startup-text">
+                  <strong>开机自动启动</strong>
+                  <small>启动后自动在系统托盘待命</small>
+                </div>
+                <label class="switch" title="开机自动启动">
+                  <input type="checkbox" bind:checked={settings.launchAtStartup} />
+                  <span class="slider"></span>
+                </label>
+              </div>
 
-          <label class="field">
-            <span>密码</span>
-            <input type="password" bind:value={settings.webdav.password} autocomplete="off" />
-          </label>
+              <div class="qc-actions">
+                <button class="qc-btn" disabled={busy} on:click={persistSettings}>
+                  <span class="ms-icon">save</span>
+                  保存设置
+                </button>
+                <button class="qc-btn qc-btn-subtle" disabled={busy} on:click={previewOverlay}>
+                  <span class="ms-icon">visibility</span>
+                  预览快捷浮窗
+                </button>
+              </div>
+            </section>
 
-          <label class="field">
-            <span>远端文件名</span>
-            <input type="text" bind:value={settings.webdav.remoteFile} placeholder="quickcv-data.json" />
-          </label>
+            <section class="general-card">
+              <h3 class="card-title"><span class="ms-icon">cloud_sync</span>WebDAV 配置</h3>
+              <label class="qc-field">
+                <span>地址</span>
+                <input class="qc-input" type="text" bind:value={settings.webdav.url} placeholder="https://dav.example.com/path" />
+              </label>
 
-          <div class="actions">
-            <button disabled={busy} on:click={persistSettings}>保存设置</button>
-            <button class="subtle" disabled={busy} on:click={runWebDavTest}>测试 WebDAV 连通性</button>
-            <button class="subtle" disabled={busy} on:click={previewOverlay}>预览快捷浮窗</button>
+              <label class="qc-field">
+                <span>用户名</span>
+                <input class="qc-input" type="text" bind:value={settings.webdav.username} autocomplete="off" />
+              </label>
+
+              <label class="qc-field">
+                <span>密码</span>
+                <input class="qc-input" type="password" bind:value={settings.webdav.password} autocomplete="off" />
+              </label>
+
+              <label class="qc-field">
+                <span>远端文件名</span>
+                <input class="qc-input" type="text" bind:value={settings.webdav.remoteFile} placeholder="quickcv-data.json" />
+              </label>
+
+              <div class="qc-actions">
+                <button class="qc-btn qc-btn-subtle" disabled={busy} on:click={runWebDavTest}>
+                  <span class="ms-icon">network_check</span>
+                  测试 WebDAV 连通性
+                </button>
+              </div>
+            </section>
           </div>
         </section>
       {/if}
@@ -758,34 +787,43 @@
       {/if}
 
       {#if tab === "system"}
-        <section class="panel">
-          <h2>系统</h2>
-          <div class="version-grid">
-            <div>
-              <span class="version-label">当前软件版本</span>
-              <strong>v{appVersion}</strong>
-            </div>
-            <div>
-              <span class="version-label">最新线上版本</span>
-              <strong>{latestVersion === "--" ? "--" : `v${latestVersion}`}</strong>
-            </div>
+        <section class="panel panel-page">
+          <div class="page-head">
+            <h2><span class="ms-icon">computer</span>系统</h2>
+            <p>查看版本状态并处理更新与配置入口。</p>
           </div>
 
-          <div class="actions">
-            <button class="subtle" disabled={checkingVersion} on:click={() => void runReleaseCheck(false)}>
-              <span class="ms-icon">system_update</span>
-              {checkingVersion ? "检查中..." : "检查版本"}
-            </button>
-            <button class="subtle" on:click={() => void openReleaseByResult()}>
-              <span class="ms-icon">open_in_new</span>
-              打开 Release 页面
-            </button>
-            <button class="subtle" on:click={() => void openConfigFolderHandler()}>
-              <span class="ms-icon">folder_open</span>
-              打开配置文件
-            </button>
+          <div class="system-grid">
+            <div class="version-card">
+              <span class="version-label">当前软件版本</span>
+              <strong>v{appVersion}</strong>
+              <small>本地安装版本</small>
+            </div>
+            <div class="version-card">
+              <span class="version-label">最新线上版本</span>
+              <strong>{latestVersion === "--" ? "--" : `v${latestVersion}`}</strong>
+              <small>来自 GitHub Release</small>
+            </div>
+
+            <section class="system-card">
+              <h3 class="card-title"><span class="ms-icon">system_update</span>更新与维护</h3>
+              <div class="qc-actions">
+                <button class="qc-btn qc-btn-subtle" disabled={checkingVersion} on:click={() => void runReleaseCheck(false)}>
+                  <span class="ms-icon">system_update</span>
+                  {checkingVersion ? "检查中..." : "检查版本"}
+                </button>
+                <button class="qc-btn qc-btn-subtle" on:click={() => void openReleaseByResult()}>
+                  <span class="ms-icon">open_in_new</span>
+                  打开 Release 页面
+                </button>
+                <button class="qc-btn qc-btn-subtle" on:click={() => void openConfigFolderHandler()}>
+                  <span class="ms-icon">folder_open</span>
+                  打开配置文件
+                </button>
+              </div>
+              <p class="hint">系统页保留版本信息与更新入口；模板同步入口已合并到「模板管理」。</p>
+            </section>
           </div>
-          <p class="hint">系统页仅保留版本信息与更新入口；模板数据同步已移到「模板管理」。</p>
         </section>
       {/if}
     </section>
@@ -796,82 +834,300 @@
   .shell {
     width: min(1320px, 100%);
     margin: 0 auto;
-    padding: 10px;
-    color: #132237;
+    padding: 12px;
+    color: var(--qc-text-primary);
     display: flex;
     flex-direction: column;
     height: 100vh;
+    gap: 8px;
   }
 
   .topbar {
     display: flex;
     justify-content: space-between;
-    align-items: flex-end;
-    margin-bottom: 6px;
+    align-items: center;
+    padding: 4px 2px;
   }
 
-  h1 {
+  .topbar h1 {
     margin: 0;
     font-size: 24px;
-    letter-spacing: 0.25px;
+    letter-spacing: 0.3px;
+    color: #16395a;
   }
 
-  h2 {
-    margin: 0 0 8px;
-    font-size: 16px;
+  .topbar p {
+    margin: 2px 0 0;
+    color: #5c7b99;
+    font-size: 12px;
   }
 
-  h3 {
-    margin: 8px 0 6px;
-    font-size: 14px;
+  .version {
+    border-radius: 999px;
+    background: linear-gradient(135deg, #ddf5ee 0%, #d9edf8 100%);
+    color: #1f5f50;
+    border: 1px solid #c0e2d9;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 600;
   }
 
-  p {
-    margin: 0 0 6px;
-  }
-
-  .hint {
-    font-size: 11px;
-    color: #4c6786;
-    margin-top: 6px;
-  }
-
-  .version-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .update-banner {
+    display: flex;
+    align-items: center;
     gap: 8px;
-    margin-bottom: 8px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #ebf6ff 0%, #e0f1fb 100%);
+    border: 1px solid #bbd9ee;
+    box-shadow: 0 4px 16px rgba(44, 106, 162, 0.1);
+    animation: bannerSlideIn 0.35s ease-out;
   }
 
-  .version-grid > div {
-    border: 1px solid #c9d8e8;
-    border-radius: 8px;
-    background: #f6fbff;
-    padding: 7px 8px;
+  @keyframes bannerSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .banner-icon {
+    font-size: 20px;
+    color: #2277bb;
+    flex-shrink: 0;
+  }
+
+  .banner-text {
+    flex: 1;
+    font-size: 13px;
+    color: #1f4f75;
+  }
+
+  .banner-text strong {
+    color: #135d95;
+  }
+
+  .banner-btn {
+    padding: 4px 12px;
+    border-radius: 7px;
+    font-size: 12px;
+    cursor: pointer;
+    border: none;
+    flex-shrink: 0;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+
+  .banner-btn:active {
+    transform: scale(0.96);
+  }
+
+  .banner-btn.confirm {
+    background: #2277bb;
+    color: #fff;
+  }
+
+  .banner-btn.confirm:hover {
+    background: #1b6aaa;
+  }
+
+  .banner-btn.dismiss {
+    background: transparent;
+    color: #5b7f9e;
+    border: 1px solid #b3c8da;
+  }
+
+  .banner-btn.dismiss:hover {
+    background: #f0f6fb;
+  }
+
+  .notice {
+    border-radius: 9px;
+    padding: 9px 12px;
+    font-size: 13px;
+    box-shadow: 0 3px 12px rgba(32, 69, 105, 0.08);
+  }
+
+  .notice.info {
+    background: #e8f1ff;
+    color: #1d4b8d;
+    border: 1px solid #c7daf6;
+  }
+
+  .notice.success {
+    background: #e6f8ef;
+    color: #1f5c45;
+    border: 1px solid #bfebd5;
+  }
+
+  .notice.error {
+    background: #ffe9ea;
+    color: #8d2e35;
+    border: 1px solid #f5cbd0;
+  }
+
+  .loading {
+    border: 1px solid var(--qc-border-soft);
+    border-radius: 14px;
+    background: linear-gradient(160deg, #fffffff0 0%, #f2f8fff0 100%);
+    padding: 24px;
+    text-align: center;
+    color: #36577a;
+    box-shadow: var(--qc-shadow-soft);
+  }
+
+  .content {
+    display: grid;
+    grid-template-columns: 168px minmax(0, 1fr);
+    gap: 8px;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .tabs {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 7px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #ffffffd1 0%, #eff6ffbf 100%);
+    border: 1px solid var(--qc-border-soft);
+    box-shadow: var(--qc-shadow-soft);
+    padding: 8px;
   }
 
-  .version-label {
-    font-size: 11px;
-    color: #5b7695;
+  .tab-btn {
+    text-align: left;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 9px 10px;
+    background: #f3f8ff;
+    color: #284664;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
   }
 
-  .version-grid strong {
+  .tab-btn .ms-icon {
+    font-size: 17px;
+    color: #4e89b9;
+  }
+
+  .tab-btn:hover {
+    border-color: #c4d9ee;
+    background: #f7fbff;
+    transform: translateX(1px);
+  }
+
+  .tab-btn.active {
+    background: linear-gradient(145deg, #d8eee7 0%, #d6eaf9 100%);
+    color: #184a3f;
+    border-color: #9bc8bd;
+    box-shadow: 0 4px 10px rgba(38, 100, 154, 0.12);
+  }
+
+  .tab-btn.active .ms-icon {
+    color: #2573ab;
+  }
+
+  .panel {
+    border-radius: 12px;
+    border: 1px solid var(--qc-border-soft);
+    background: linear-gradient(160deg, #ffffffe8 0%, #f6fbffe8 100%);
+    box-shadow: var(--qc-shadow-soft);
+    overflow: auto;
+    min-height: 0;
+  }
+
+  .panel-page {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .page-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    border-bottom: 1px solid #e4eef8;
+    padding-bottom: 10px;
+  }
+
+  .page-head h2 {
+    margin: 0;
+    font-size: 17px;
+    color: #1a3e63;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .page-head h2 .ms-icon {
+    font-size: 20px;
+    color: #3c87c0;
+  }
+
+  .page-head p {
+    margin: 0;
+    font-size: 12px;
+    color: #6684a3;
+  }
+
+  .general-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+
+  .general-card,
+  .system-card {
+    border: 1px solid #d7e4f1;
+    border-radius: 12px;
+    background: linear-gradient(165deg, #ffffff 0%, #f5faff 100%);
+    box-shadow: 0 6px 20px rgba(39, 96, 148, 0.08);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .card-title {
+    margin: 0;
     font-size: 14px;
-    color: #12385b;
+    color: #1e476d;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .card-title .ms-icon {
+    font-size: 18px;
+    color: #4a8ec3;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
   }
 
   .startup-card {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border: 1px solid #c9d9e9;
-    border-radius: 9px;
-    background: linear-gradient(135deg, #f7fbff 0%, #eef8f4 100%);
-    padding: 8px 10px;
-    margin-bottom: 8px;
+    border: 1px solid #cbdeee;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #f6fbff 0%, #edf7f3 100%);
+    padding: 9px 10px;
     gap: 10px;
   }
 
@@ -883,7 +1139,7 @@
   }
 
   .startup-text strong {
-    font-size: 13px;
+    font-size: 12px;
     color: #173b5f;
     font-weight: 600;
   }
@@ -939,227 +1195,46 @@
     transform: translateX(20px);
   }
 
-  .version {
-    border-radius: 999px;
-    background: #dbf4ee;
-    color: #1e5f50;
-    padding: 4px 10px;
-    font-size: 12px;
-  }
-
-  .update-banner {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 6px;
-    padding: 9px 12px;
-    border-radius: 9px;
-    background: linear-gradient(135deg, #e7f4ff 0%, #ddf0f8 100%);
-    border: 1px solid #b3d8f0;
-    animation: bannerSlideIn 0.35s ease-out;
-  }
-
-  @keyframes bannerSlideIn {
-    from {
-      opacity: 0;
-      transform: translateY(-8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .banner-icon {
-    font-size: 20px;
-    color: #2277bb;
-    flex-shrink: 0;
-  }
-
-  .banner-text {
-    flex: 1;
-    font-size: 13px;
-    color: #1a4a6e;
-  }
-
-  .banner-text strong {
-    color: #125a90;
-  }
-
-  .banner-btn {
-    padding: 4px 12px;
-    border-radius: 6px;
-    font-size: 12px;
-    cursor: pointer;
-    border: none;
-    flex-shrink: 0;
-    transition: background 0.15s ease, transform 0.1s ease;
-  }
-
-  .banner-btn:active {
-    transform: scale(0.96);
-  }
-
-  .banner-btn.confirm {
-    background: #2277bb;
-    color: #fff;
-  }
-
-  .banner-btn.confirm:hover {
-    background: #1b6aaa;
-  }
-
-  .banner-btn.dismiss {
-    background: transparent;
-    color: #5b7f9e;
-    border: 1px solid #b3c8da;
-  }
-
-  .banner-btn.dismiss:hover {
-    background: #f0f6fb;
-  }
-
-  .notice {
-    margin-bottom: 6px;
-    border-radius: 8px;
-    padding: 8px 10px;
-    font-size: 13px;
-  }
-
-  .notice.info {
-    background: #e7f0ff;
-    color: #1d4b8d;
-  }
-
-  .notice.success {
-    background: #e4f8ef;
-    color: #1f5c45;
-  }
-
-  .notice.error {
-    background: #ffe9ea;
-    color: #8d2e35;
-  }
-
-  .loading {
-    border: 1px solid #d0deeb;
-    border-radius: 10px;
-    background: #ffffffb8;
-    padding: 20px;
-    text-align: center;
-  }
-
-  .content {
+  .system-grid {
     display: grid;
-    grid-template-columns: 146px minmax(0, 1fr);
-    gap: 8px;
-    flex: 1;
-    min-height: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
 
-  .tabs {
+  .version-card {
+    border: 1px solid #c8ddef;
+    border-radius: 12px;
+    background: linear-gradient(140deg, #f7fbff 0%, #eff7ff 100%);
+    padding: 10px 12px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    border-radius: 10px;
-    background: linear-gradient(180deg, #ffffffd1 0%, #f1f7ffbf 100%);
-    border: 1px solid #d0deeb;
-    padding: 8px;
+    gap: 3px;
   }
 
-  .tabs button {
-    text-align: left;
-    border: 1px solid transparent;
-    border-radius: 7px;
-    padding: 8px 10px;
-    background: #f4f9ff;
-    color: #26405f;
-    cursor: pointer;
-    font-size: 13px;
+  .version-label {
+    font-size: 11px;
+    color: #5b7695;
   }
 
-  .tabs button.active {
-    background: linear-gradient(145deg, #d8eee7 0%, #d6eaf9 100%);
-    color: #184a3f;
-    border-color: #8fc5b7;
+  .version-card strong {
+    font-size: 18px;
+    color: #173e62;
   }
 
-  .panel {
-    border-radius: 10px;
-    border: 1px solid #d0deeb;
-    background: linear-gradient(160deg, #ffffffe6 0%, #f6fbffe8 100%);
-    padding: 10px;
-    overflow: auto;
-    min-height: 0;
+  .version-card small {
+    color: #7390ad;
+    font-size: 11px;
   }
 
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin-bottom: 8px;
+  .system-card {
+    grid-column: 1 / -1;
   }
 
-  .field > span {
+  .hint {
     font-size: 12px;
-    color: #45607f;
-  }
-
-  input,
-  textarea {
-    width: 100%;
-    border: 1px solid #b9ccdf;
-    border-radius: 7px;
-    padding: 6px 8px;
-    outline: none;
-    background: #fff;
-    color: #132237;
-    font-size: 13px;
-  }
-
-  input:focus,
-  textarea:focus {
-    border-color: #4f8ac4;
-    box-shadow: 0 0 0 2px #dcecff;
-  }
-
-  .row {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 6px;
-  }
-
-  .actions {
-    display: flex;
-    gap: 6px;
-    margin-top: 8px;
-    flex-wrap: wrap;
-  }
-
-  button {
-    border: 1px solid #2e6ba8;
-    background: #2f76bc;
-    color: #fff;
-    border-radius: 7px;
-    padding: 6px 10px;
-    cursor: pointer;
-    font-size: 12px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    line-height: 1;
-  }
-
-  button.subtle {
-    background: #eff6ff;
-    color: #284f7f;
-    border-color: #9cb9da;
-  }
-
-  button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
+    color: #5f7d99;
+    margin: 0;
+    line-height: 1.5;
   }
 
   /* ===== 模板管理 - 全新布局 ===== */
@@ -1226,6 +1301,11 @@
     border-radius: 8px !important;
     padding: 5px 12px !important;
     font-size: 12px !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    cursor: pointer;
     backdrop-filter: blur(6px);
     transition: all 0.2s ease;
   }
@@ -1550,6 +1630,11 @@
     padding: 6px 14px !important;
     font-size: 12px !important;
     font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    cursor: pointer;
     box-shadow: 0 2px 8px rgba(42, 122, 184, 0.25);
     transition: all 0.2s ease;
   }
@@ -1839,6 +1924,10 @@
     padding: 9px 16px !important;
     font-size: 13px !important;
     font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
     box-shadow: 0 2px 10px rgba(31, 138, 78, 0.25);
     transition: all 0.2s ease;
     justify-content: center;
@@ -1863,6 +1952,19 @@
     .tabs {
       flex-direction: row;
       overflow-x: auto;
+    }
+
+    .general-grid,
+    .system-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .page-head {
+      align-items: flex-start;
+    }
+
+    .row {
+      grid-template-columns: 1fr;
     }
 
     .tpl-body {

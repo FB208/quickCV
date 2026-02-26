@@ -260,7 +260,7 @@
 </script>
 
 <main class="overlay">
-  <section class="panel">
+  <section class="panel overlay-panel">
     <div class="drag-bar" data-tauri-drag-region on:pointerdown={startDrag}>
       <span class="drag-title" data-tauri-drag-region>
         <span class="ms-icon" data-tauri-drag-region>drag_indicator</span>
@@ -271,19 +271,22 @@
 
     <header class="head">
       <input
+        class="qc-input"
         bind:this={searchInput}
         bind:value={query}
         placeholder="搜索文件夹 / 模板名称 / key / 内容"
         on:input={() => (focusPane = "templates")}
       />
-      <button class="ghost" disabled={busy} on:click={() => void cancelOverlay()}>Esc</button>
+      <button class="qc-btn qc-btn-subtle ghost" disabled={busy} on:click={() => void cancelOverlay()}>
+        <span class="ms-icon">close</span>Esc
+      </button>
     </header>
 
     <div class="meta">
-      <span>文件夹 {filteredFolders.length}</span>
-      <span>模板 {filteredTemplates.length}</span>
-      <span>{hint}</span>
-      <span>Enter 插入 · Esc 取消</span>
+      <span class="qc-chip"><span class="ms-icon">folder</span>文件夹 {filteredFolders.length}</span>
+      <span class="qc-chip"><span class="ms-icon">description</span>模板 {filteredTemplates.length}</span>
+      <span class="meta-text">{hint}</span>
+      <span class="meta-text">Enter 插入 · Esc 取消</span>
     </div>
 
     {#if loading}
@@ -295,7 +298,7 @@
           <ul>
             {#each filteredFolders as folder}
               <li class:selected={folder.id === selectedFolderId}>
-                <button on:click={() => selectFolder(folder.id)}>{folder.name}</button>
+                <button class="pane-btn" on:click={() => selectFolder(folder.id)}>{folder.name}</button>
               </li>
             {/each}
           </ul>
@@ -307,6 +310,7 @@
             {#each filteredTemplates as template}
               <li class:selected={template.id === selectedTemplateId}>
                 <button
+                  class="pane-btn"
                   on:click={() => selectTemplate(template.id)}
                   on:dblclick={() => void confirmInsert()}
                 >
@@ -332,24 +336,24 @@
     width: 100vw;
     height: 100vh;
     margin: 0;
-    padding: 0;
+    padding: 6px;
     background: transparent;
     display: grid;
     place-items: center;
   }
 
-  .panel {
+  .overlay-panel {
     width: 100%;
     height: 100%;
-    border-radius: 10px;
-    border: 1px solid #96b9d0;
-    background: linear-gradient(160deg, #f1faf8 0%, #f2f7ff 100%);
-    box-shadow: 0 14px 44px #214d6f3a;
-    backdrop-filter: blur(12px);
-    padding: 6px;
+    border-radius: 12px;
+    border: 1px solid var(--qc-border-strong);
+    background: linear-gradient(160deg, #f1f8ffed 0%, #eef8f5eb 100%);
+    box-shadow: var(--qc-shadow-strong);
+    backdrop-filter: blur(14px);
+    padding: 8px;
     display: grid;
     grid-template-rows: auto auto auto minmax(0, 1fr);
-    gap: 5px;
+    gap: 6px;
   }
 
   .drag-bar {
@@ -357,12 +361,12 @@
     justify-content: space-between;
     align-items: center;
     gap: 8px;
-    border: 1px dashed #9ebdd3;
-    border-radius: 7px;
-    background: #eaf4ffcc;
+    border: 1px dashed #9ec2da;
+    border-radius: 8px;
+    background: linear-gradient(145deg, #ebf5ffcf 0%, #e6f2f8cf 100%);
     color: #3f6286;
     font-size: 10.5px;
-    padding: 3px 7px;
+    padding: 4px 8px;
     cursor: move;
     user-select: none;
   }
@@ -382,62 +386,74 @@
   .head {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 5px;
+    gap: 6px;
   }
 
-  input {
-    border: 1px solid #a9c3d8;
-    border-radius: 7px;
-    padding: 6px 9px;
-    background: #ffffffd8;
-    color: #1a3652;
-    outline: none;
-    font-size: 13px;
+  .head .qc-input {
+    min-height: 34px;
   }
 
-  input:focus {
-    border-color: #3f7db5;
-    box-shadow: 0 0 0 2px #d8e9fb;
+  .ghost {
+    min-width: 74px;
+    padding-inline: 9px;
   }
 
   .meta {
     display: flex;
-    gap: 7px;
+    gap: 6px;
     flex-wrap: wrap;
-    font-size: 10.5px;
-    color: #527091;
-    padding: 0 3px;
+    padding: 1px 2px;
     line-height: 1.2;
+  }
+
+  .meta .qc-chip {
+    padding: 3px 9px;
+    background: #eef5ff;
+  }
+
+  .meta .qc-chip .ms-icon {
+    font-size: 13px;
+  }
+
+  .meta-text {
+    font-size: 11px;
+    color: #567594;
+    display: inline-flex;
+    align-items: center;
   }
 
   .body {
     min-height: 0;
     display: grid;
     grid-template-columns: 190px minmax(0, 1fr);
-    gap: 5px;
+    gap: 6px;
   }
 
   .pane {
-    border: 1px solid #c4d8e8;
-    border-radius: 8px;
-    background: #ffffffcc;
-    padding: 5px;
+    border: 1px solid #cbdeed;
+    border-radius: 10px;
+    background: linear-gradient(160deg, #ffffffeb 0%, #f6fbffde 100%);
+    box-shadow: 0 4px 16px rgba(56, 109, 156, 0.08);
+    padding: 6px;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
-    gap: 4px;
+    gap: 5px;
     min-height: 0;
   }
 
   .pane.active {
-    border-color: #63a0c4;
-    box-shadow: 0 0 0 2px #d4ecf8;
+    border-color: #6eaad0;
+    box-shadow: 0 0 0 2px #d8ecf8, 0 7px 18px rgba(68, 128, 179, 0.16);
   }
 
   h2 {
     margin: 0;
     font-size: 12px;
-    color: #466b8f;
+    color: #3f6387;
     font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
 
   ul {
@@ -450,21 +466,28 @@
     overflow: auto;
   }
 
-  li button {
+  .pane-btn {
     width: 100%;
     text-align: left;
-    border: 1px solid #d0deea;
+    border: 1px solid #d2e2ee;
     border-radius: 7px;
     background: #fff;
     color: #1d3a58;
-    padding: 4px 6px;
+    padding: 5px 7px;
     cursor: pointer;
+    transition: all 0.16s ease;
   }
 
-  li.selected button {
+  .pane-btn:hover {
+    border-color: #b2cde3;
+    background: #f6fbff;
+  }
+
+  li.selected .pane-btn {
     border-color: #6aa5c4;
-    background: #eaf6fc;
+    background: linear-gradient(150deg, #eaf6fc 0%, #e9f2ff 100%);
     color: #0f3a57;
+    box-shadow: 0 1px 7px rgba(72, 132, 184, 0.15);
   }
 
   .template-row {
@@ -484,10 +507,10 @@
 
   .key {
     font-size: 10px;
-    border: 1px solid #b5cbe0;
+    border: 1px solid #b8cde2;
     border-radius: 10px;
     padding: 1px 5px;
-    background: #f0f7ff;
+    background: #f1f8ff;
     color: #4c6f8f;
     white-space: nowrap;
   }
@@ -506,24 +529,19 @@
   .loading {
     display: grid;
     place-items: center;
-    border: 1px dashed #9cb8cc;
-    border-radius: 8px;
+    border: 1px dashed #a5c1d8;
+    border-radius: 10px;
+    background: #f7fbffb0;
     color: #44627f;
     font-size: 12px;
   }
 
-  .ghost {
-    border: 1px solid #9fbad2;
-    border-radius: 7px;
-    background: #eff6ff;
-    color: #2a5078;
-    padding: 0 9px;
-    cursor: pointer;
-    font-size: 12px;
-  }
-
   @media (max-width: 620px) {
-    .panel {
+    .overlay {
+      padding: 4px;
+    }
+
+    .overlay-panel {
       padding: 5px;
     }
 
