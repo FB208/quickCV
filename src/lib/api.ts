@@ -69,6 +69,10 @@ export const closeOverlay = async (): Promise<void> => {
   return invokeTauri<void>("close_overlay");
 };
 
+export const setOverlayDragging = async (dragging: boolean): Promise<void> => {
+  return invokeTauri<void>("set_overlay_dragging", { dragging });
+};
+
 export const getOverlayContext = async (): Promise<OverlayContext> => {
   return invokeTauri<OverlayContext>("get_overlay_context");
 };

@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { closeOverlay, getOverlayContext, insertTemplate, loadTemplateStore } from "./lib/api";
+  import { closeOverlay, getOverlayContext, insertTemplate, loadTemplateStore, setOverlayDragging } from "./lib/api";
   import type { OverlayContext, TemplateItem, TemplateStore } from "./lib/types";
 
   type FocusPane = "folders" | "templates";
@@ -249,9 +249,12 @@
     }
     event.preventDefault();
     try {
+      await setOverlayDragging(true);
       await currentWindow.startDragging();
     } catch {
       // 忽略拖动失败，不影响主流程
+    } finally {
+      await setOverlayDragging(false);
     }
   };
 </script>

@@ -69,6 +69,7 @@ enum ClipboardBackup {
 #[derive(Default)]
 struct RuntimeState {
     overlay_open: AtomicBool,
+    overlay_dragging: AtomicBool,
     overlay_context: Mutex<OverlayContext>,
     previous_input_window: Mutex<Option<isize>>,
 }
@@ -301,6 +302,13 @@ fn close_overlay(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn set_overlay_dragging(app: AppHandle, dragging: bool) -> Result<(), String> {
+    let runtime = app.state::<RuntimeState>();
+    runtime.overlay_dragging.store(dragging, Ordering::SeqCst);
+    Ok(())
+}
+
+#[tauri::command]
 fn get_overlay_context(app: AppHandle) -> Result<OverlayContext, String> {
     let runtime = app.state::<RuntimeState>();
     runtime
@@ -350,18 +358,24 @@ fn show_overlay_window_with_context(
         *saved = context.clone();
     }
 
+    // 先捕获前台窗口句柄，并用它获取输入光标位置，必须在 show() 之前完成
+    let foreground_hwnd = capture_foreground_window_handle();
+
     if let Ok(mut previous) = runtime.previous_input_window.lock() {
-        *previous = capture_foreground_window_handle();
+        *previous = foreground_hwnd;
     }
+
+    let anchor = caret_screen_position_from(foreground_hwnd)
+        .or_else(cursor_screen_position)
+        .unwrap_or((OVERLAY_SAFE_MARGIN, OVERLAY_SAFE_MARGIN));
+
+    runtime.overlay_dragging.store(false, Ordering::SeqCst);
 
     if let Some(window) = app.get_webview_window("overlay") {
         window
             .show()
             .map_err(|error| format!("显示浮窗失败: {error}"))?;
 
-        let anchor = caret_screen_position()
-            .or_else(cursor_screen_position)
-            .unwrap_or((OVERLAY_SAFE_MARGIN, OVERLAY_SAFE_MARGIN));
         let (clamped_x, clamped_y) = clamp_overlay_position(app, &window, anchor.0 + 8, anchor.1 + 14);
         let _ = window.set_position(Position::Physical(PhysicalPosition {
             x: clamped_x,
@@ -676,13 +690,16 @@ fn restore_input_window_focus(handle: Option<isize>) {
 fn restore_input_window_focus(_handle: Option<isize>) {}
 
 #[cfg(target_os = "windows")]
-fn caret_screen_position() -> Option<(i32, i32)> {
-    let foreground = unsafe { GetForegroundWindow() };
-    if foreground.0.is_null() {
+fn caret_screen_position_from(hwnd_raw: Option<isize>) -> Option<(i32, i32)> {
+    let hwnd = match hwnd_raw {
+        Some(raw) => HWND(raw as *mut core::ffi::c_void),
+        None => unsafe { GetForegroundWindow() },
+    };
+    if hwnd.0.is_null() {
         return None;
     }
 
-    let thread_id = unsafe { GetWindowThreadProcessId(foreground, None) };
+    let thread_id = unsafe { GetWindowThreadProcessId(hwnd, None) };
     if thread_id == 0 {
         return None;
     }
@@ -711,7 +728,7 @@ fn caret_screen_position() -> Option<(i32, i32)> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn caret_screen_position() -> Option<(i32, i32)> {
+fn caret_screen_position_from(_hwnd_raw: Option<isize>) -> Option<(i32, i32)> {
     None
 }
 
@@ -772,7 +789,20 @@ fn main() {
                 }
 
                 if let WindowEvent::Focused(false) = event {
-                    let _ = hide_overlay_window(&window.app_handle());
+                    // 拖动操作会短暂触发失焦，延迟检查避免误关闭
+                    let app_handle = window.app_handle().clone();
+                    thread::spawn(move || {
+                        thread::sleep(Duration::from_millis(150));
+                        let runtime = app_handle.state::<RuntimeState>();
+                        if runtime.overlay_dragging.load(Ordering::SeqCst) {
+                            return;
+                        }
+                        if let Some(overlay) = app_handle.get_webview_window("overlay") {
+                            if !overlay.is_focused().unwrap_or(true) {
+                                let _ = hide_overlay_window(&app_handle);
+                            }
+                        }
+                    });
                 }
             }
         })
@@ -789,6 +819,7 @@ fn main() {
             open_release_page,
             open_overlay,
             close_overlay,
+            set_overlay_dragging,
             get_overlay_context,
             insert_template
         ])
