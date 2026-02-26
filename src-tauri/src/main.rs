@@ -366,6 +366,8 @@ fn show_overlay_window_with_context(
     }
 
     let anchor = caret_screen_position_from(foreground_hwnd)
+        .or_else(uia_caret_screen_position)
+        .or_else(|| imm_caret_screen_position(foreground_hwnd))
         .or_else(cursor_screen_position)
         .unwrap_or((OVERLAY_SAFE_MARGIN, OVERLAY_SAFE_MARGIN));
 
@@ -729,6 +731,195 @@ fn caret_screen_position_from(hwnd_raw: Option<isize>) -> Option<(i32, i32)> {
 
 #[cfg(not(target_os = "windows"))]
 fn caret_screen_position_from(_hwnd_raw: Option<isize>) -> Option<(i32, i32)> {
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn uia_caret_screen_position() -> Option<(i32, i32)> {
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoUninitialize,
+        CLSCTX_ALL, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Accessibility::*;
+
+    unsafe {
+        let com_result = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let should_uninit = com_result.is_ok();
+        eprintln!("[UIA] CoInitializeEx: ok={}, is_err={}", should_uninit, com_result.is_err());
+
+        let result = (|| -> Option<(i32, i32)> {
+            let uia: IUIAutomation = match CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL) {
+                Ok(v) => { eprintln!("[UIA] CUIAutomation created"); v }
+                Err(e) => { eprintln!("[UIA] CUIAutomation FAILED: {e}"); return None; }
+            };
+            let focused = match uia.GetFocusedElement() {
+                Ok(v) => { eprintln!("[UIA] GetFocusedElement OK"); v }
+                Err(e) => { eprintln!("[UIA] GetFocusedElement FAILED: {e}"); return None; }
+            };
+
+            // TextPattern2::GetCaretRange
+            match focused.GetCurrentPatternAs::<IUIAutomationTextPattern2>(UIA_TextPattern2Id) {
+                Ok(tp2) => {
+                    eprintln!("[UIA] TextPattern2 supported");
+                    let mut active = windows::core::BOOL::default();
+                    match tp2.GetCaretRange(&mut active) {
+                        Ok(range) => {
+                            eprintln!("[UIA] GetCaretRange OK, active={}", active.as_bool());
+                            match extract_range_position(&range) {
+                                Some(pos) => {
+                                    eprintln!("[UIA] CaretRange bounding: ({}, {})", pos.0, pos.1);
+                                    return Some(pos);
+                                }
+                                None => eprintln!("[UIA] CaretRange bounding: EMPTY"),
+                            }
+                        }
+                        Err(e) => eprintln!("[UIA] GetCaretRange FAILED: {e}"),
+                    }
+                }
+                Err(e) => eprintln!("[UIA] TextPattern2 not supported: {e}"),
+            }
+
+            // TextPattern::GetSelection
+            match focused.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId) {
+                Ok(tp) => {
+                    eprintln!("[UIA] TextPattern supported");
+                    match tp.GetSelection() {
+                        Ok(ranges) => {
+                            let len = ranges.Length().unwrap_or(0);
+                            eprintln!("[UIA] GetSelection ranges: {len}");
+                            if len > 0 {
+                                if let Ok(range) = ranges.GetElement(0) {
+                                    match extract_range_position(&range) {
+                                        Some(pos) => {
+                                            eprintln!("[UIA] Selection bounding: ({}, {})", pos.0, pos.1);
+                                            return Some(pos);
+                                        }
+                                        None => eprintln!("[UIA] Selection bounding: EMPTY"),
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => eprintln!("[UIA] GetSelection FAILED: {e}"),
+                    }
+                }
+                Err(e) => eprintln!("[UIA] TextPattern not supported: {e}"),
+            }
+
+            eprintln!("[UIA] all methods failed");
+            None
+        })();
+
+        if should_uninit {
+            CoUninitialize();
+        }
+
+        result
+    }
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn extract_range_position(
+    range: &windows::Win32::UI::Accessibility::IUIAutomationTextRange,
+) -> Option<(i32, i32)> {
+    use windows::Win32::UI::Accessibility::*;
+
+    // 将 range 折叠到末端（光标通常在选区末尾），再展开一个字符取精确位置
+    if let Ok(collapsed) = range.Clone() {
+        let _ = collapsed.MoveEndpointByRange(
+            TextPatternRangeEndpoint_Start,
+            range,
+            TextPatternRangeEndpoint_End,
+        );
+        let _ = collapsed.ExpandToEnclosingUnit(TextUnit_Character);
+
+        if let Some(pos) = read_range_rect(&collapsed) {
+            eprintln!("[UIA] collapsed rect pos: ({}, {})", pos.0, pos.1);
+            return Some(pos);
+        }
+    }
+
+    // 降级：直接用原始 range
+    read_range_rect(range)
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn read_range_rect(
+    range: &windows::Win32::UI::Accessibility::IUIAutomationTextRange,
+) -> Option<(i32, i32)> {
+    use windows::Win32::System::Ole::{
+        SafeArrayAccessData, SafeArrayDestroy, SafeArrayGetLBound,
+        SafeArrayGetUBound, SafeArrayUnaccessData,
+    };
+
+    let sa = range.GetBoundingRectangles().ok()?;
+    if sa.is_null() {
+        return None;
+    }
+
+    let pos = (|| -> Option<(i32, i32)> {
+        let lb = SafeArrayGetLBound(sa, 1).ok()?;
+        let ub = SafeArrayGetUBound(sa, 1).ok()?;
+        let count = (ub - lb + 1) as usize;
+        if count < 4 {
+            return None;
+        }
+
+        let mut pdata: *mut std::ffi::c_void = std::ptr::null_mut();
+        SafeArrayAccessData(sa, &mut pdata).ok()?;
+        let data = std::slice::from_raw_parts(pdata as *const f64, count);
+        eprintln!("[UIA] raw rect: x={}, y={}, w={}, h={}", data[0], data[1], data[2], data[3]);
+        let x = data[0] as i32;
+        let y = (data[1] + data[3]) as i32;
+        let _ = SafeArrayUnaccessData(sa);
+        Some((x, y))
+    })();
+
+    let _ = SafeArrayDestroy(sa);
+    pos
+}
+
+#[cfg(not(target_os = "windows"))]
+fn uia_caret_screen_position() -> Option<(i32, i32)> {
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn imm_caret_screen_position(hwnd_raw: Option<isize>) -> Option<(i32, i32)> {
+    use windows::Win32::UI::Input::Ime::{
+        ImmGetCompositionWindow, ImmGetContext, ImmReleaseContext, COMPOSITIONFORM,
+    };
+
+    let raw = hwnd_raw?;
+    let hwnd = HWND(raw as *mut core::ffi::c_void);
+
+    unsafe {
+        let himc = ImmGetContext(hwnd);
+        if himc.0.is_null() {
+            return None;
+        }
+
+        let mut form: COMPOSITIONFORM = std::mem::zeroed();
+        let result = if ImmGetCompositionWindow(himc, &mut form).as_bool() {
+            let mut pt = POINT {
+                x: form.ptCurrentPos.x,
+                y: form.ptCurrentPos.y,
+            };
+            if ClientToScreen(hwnd, &mut pt).as_bool() {
+                Some((pt.x, pt.y))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        ImmReleaseContext(hwnd, himc);
+        result
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn imm_caret_screen_position(_hwnd_raw: Option<isize>) -> Option<(i32, i32)> {
     None
 }
 

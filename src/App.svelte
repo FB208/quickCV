@@ -76,6 +76,8 @@
   let latestVersion = "--";
   let checkingVersion = false;
 
+  let updateBanner: ReleaseCheckResult | null = null;
+
   $: activeFolders = store.folders.filter((item) => item.deletedAt === null);
   $: if (!selectedFolderId || !activeFolders.some((item) => item.id === selectedFolderId)) {
     selectedFolderId = activeFolders[0]?.id || "";
@@ -436,12 +438,15 @@
       }
 
       if (result.hasUpdate) {
-        setNotice("info", result.message);
-        const question = silent
-          ? `检测到新版本 ${result.latestVersion || "--"}，是否打开发布页下载？`
-          : `发现新版本 ${result.latestVersion || "--"}，是否立即打开发布页？`;
-        if (window.confirm(question)) {
-          await openReleaseByResult(result);
+        if (silent) {
+          // 启动时静默检查：只显示非阻塞横幅，不弹窗、不自动打开网页
+          updateBanner = result;
+        } else {
+          // 用户手动检查：用 confirm 询问
+          setNotice("info", result.message);
+          if (window.confirm(`发现新版本 ${result.latestVersion || "--"}，是否立即打开发布页？`)) {
+            await openReleaseByResult(result);
+          }
         }
         return;
       }
@@ -456,6 +461,16 @@
     } finally {
       checkingVersion = false;
     }
+  };
+
+  const dismissUpdateBanner = (): void => {
+    updateBanner = null;
+  };
+
+  const confirmUpdateBanner = async (): Promise<void> => {
+    const banner = updateBanner;
+    updateBanner = null;
+    await openReleaseByResult(banner ?? undefined);
   };
 
   const openReleaseByResult = async (result?: ReleaseCheckResult): Promise<void> => {
@@ -485,6 +500,15 @@
     </div>
     <div class="version">版本 {appVersion}</div>
   </header>
+
+  {#if updateBanner}
+    <div class="update-banner">
+      <span class="ms-icon banner-icon">system_update</span>
+      <span class="banner-text">检测到新版本 <strong>{updateBanner.latestVersion || "--"}</strong>（当前 {updateBanner.currentVersion}）</span>
+      <button class="banner-btn confirm" on:click={() => void confirmUpdateBanner()}>前往下载</button>
+      <button class="banner-btn dismiss" on:click={dismissUpdateBanner}>忽略</button>
+    </div>
+  {/if}
 
   {#if notice}
     <div class={`notice ${noticeType}`}>{notice}</div>
@@ -838,6 +862,78 @@
     color: #1e5f50;
     padding: 4px 10px;
     font-size: 12px;
+  }
+
+  .update-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    padding: 9px 12px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, #e7f4ff 0%, #ddf0f8 100%);
+    border: 1px solid #b3d8f0;
+    animation: bannerSlideIn 0.35s ease-out;
+  }
+
+  @keyframes bannerSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .banner-icon {
+    font-size: 20px;
+    color: #2277bb;
+    flex-shrink: 0;
+  }
+
+  .banner-text {
+    flex: 1;
+    font-size: 13px;
+    color: #1a4a6e;
+  }
+
+  .banner-text strong {
+    color: #125a90;
+  }
+
+  .banner-btn {
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    border: none;
+    flex-shrink: 0;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+
+  .banner-btn:active {
+    transform: scale(0.96);
+  }
+
+  .banner-btn.confirm {
+    background: #2277bb;
+    color: #fff;
+  }
+
+  .banner-btn.confirm:hover {
+    background: #1b6aaa;
+  }
+
+  .banner-btn.dismiss {
+    background: transparent;
+    color: #5b7f9e;
+    border: 1px solid #b3c8da;
+  }
+
+  .banner-btn.dismiss:hover {
+    background: #f0f6fb;
   }
 
   .notice {
