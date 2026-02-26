@@ -578,105 +578,171 @@
       {/if}
 
       {#if tab === "templates"}
-        <section class="panel templates">
-          <section class="template-sync-strip">
-            <div class="sync-stats">
-              <span class="sync-badge">模板数据同步</span>
-              <span>本地版本 {store.datasetVersion || 0}</span>
-              <span>云端基线 {settings.lastSyncedVersion || 0}</span>
+        <section class="panel tpl-panel">
+          <!-- 顶部同步栏 -->
+          <section class="tpl-sync-bar">
+            <div class="tpl-sync-left">
+              <span class="ms-icon tpl-sync-icon">cloud_sync</span>
+              <span class="tpl-sync-ver">本地 <strong>{store.datasetVersion || 0}</strong></span>
+              <span class="tpl-sync-sep">|</span>
+              <span class="tpl-sync-ver">云端 <strong>{settings.lastSyncedVersion || 0}</strong></span>
             </div>
-            <div class="sync-actions">
-              <button class="subtle" disabled={busy} on:click={() => void runSync("pull")}>从云端拉取并合并</button>
-              <button class="subtle" disabled={busy} on:click={() => void runSync("push")}>推送模板到云端</button>
+            <div class="tpl-sync-right">
+              <button class="tpl-sync-btn" disabled={busy} on:click={() => void runSync("pull")}>
+                <span class="ms-icon">cloud_download</span> 拉取合并
+              </button>
+              <button class="tpl-sync-btn" disabled={busy} on:click={() => void runSync("push")}>
+                <span class="ms-icon">cloud_upload</span> 推送云端
+              </button>
             </div>
           </section>
 
-          <div class="column folders">
-            <h2>文件夹</h2>
-            <input type="text" bind:value={folderSearch} placeholder="搜索文件夹" />
-            <div class="inline-actions">
-              <input
-                type="text"
-                bind:value={newFolderName}
-                placeholder="新建文件夹"
-                on:keydown={(event) => onEnterRun(event, createFolder)}
-              />
-              <button disabled={busy} on:click={createFolder}>
-                <span class="ms-icon">create_new_folder</span>
-                新增
-              </button>
-            </div>
-            <ul>
-              {#each filteredFolders as folder}
-                <li class:active={folder.id === selectedFolderId}>
-                  <button class="item" on:click={() => (selectedFolderId = folder.id)}>{folder.name}</button>
-                  <button class="icon" title="重命名" on:click={() => void renameFolder(folder.id)}>
-                    <span class="ms-icon">edit</span>
-                  </button>
-                  <button class="icon danger" title="删除" on:click={() => void removeFolder(folder.id)}>
-                    <span class="ms-icon">delete</span>
-                  </button>
-                </li>
-              {/each}
-            </ul>
-          </div>
-
-          <div class="column template-list">
-            <h2>模板列表</h2>
-            <input type="text" bind:value={templateSearch} placeholder="搜索模板、key、内容" />
-            <div class="inline-actions">
-              <input
-                type="text"
-                bind:value={newTemplateName}
-                placeholder="新建模板"
-                on:keydown={(event) => onEnterRun(event, createTemplate)}
-              />
-              <button disabled={busy} on:click={createTemplate}>
-                <span class="ms-icon">add_notes</span>
-                新增
-              </button>
-            </div>
-            <ul>
-              {#each filteredTemplates as item}
-                <li class:active={item.id === selectedTemplateId}>
-                  <button class="item" on:click={() => (selectedTemplateId = item.id)}>
-                    <span>{item.name}</span>
-                    {#if item.key}
-                      <small>key: {item.key}</small>
-                    {/if}
-                  </button>
-                  <button class="icon danger" title="删除" on:click={() => void removeTemplate(item.id)}>
-                    <span class="ms-icon">delete</span>
-                  </button>
-                </li>
-              {/each}
-            </ul>
-          </div>
-
-          <div class="column editor">
-            <h2>模板编辑</h2>
-            {#if templateDraft}
-              <label class="field">
-                <span>模板名称</span>
-                <input type="text" bind:value={templateDraft.name} />
-              </label>
-
-              <label class="field">
-                <span>模板 key（可选，唯一）</span>
-                <input type="text" bind:value={templateDraft.key} placeholder="例如 addr" />
-              </label>
-
-              <label class="field">
-                <span>模板内容</span>
-                <textarea rows="14" bind:value={templateDraft.content}></textarea>
-              </label>
-
-              <div class="actions">
-                <button disabled={busy} on:click={saveTemplateDraft}>保存模板</button>
+          <!-- 主体区域 -->
+          <div class="tpl-body">
+            <!-- 左侧：文件夹 -->
+            <aside class="tpl-sidebar">
+              <div class="tpl-sidebar-header">
+                <h3>
+                  <span class="ms-icon">folder</span> 文件夹
+                </h3>
+                <button class="tpl-add-btn" title="新建文件夹" disabled={busy} on:click={() => { newFolderName = "新文件夹"; void createFolder(); }}>
+                  <span class="ms-icon">add</span>
+                </button>
               </div>
-            {:else}
-              <div class="empty">请先在左侧选择模板</div>
-            {/if}
+              <div class="tpl-search-wrap">
+                <span class="ms-icon tpl-search-icon">search</span>
+                <input type="text" bind:value={folderSearch} placeholder="搜索文件夹…" class="tpl-search" />
+              </div>
+              <div class="tpl-folder-list">
+                {#each filteredFolders as folder}
+                  <div
+                    class="tpl-folder-item"
+                    class:active={folder.id === selectedFolderId}
+                    on:click={() => (selectedFolderId = folder.id)}
+                    on:keydown={(e) => e.key === 'Enter' && (selectedFolderId = folder.id)}
+                    role="button"
+                    tabindex="0"
+                  >
+                    <span class="ms-icon tpl-folder-icon">{folder.id === selectedFolderId ? 'folder_open' : 'folder'}</span>
+                    <span class="tpl-folder-name">{folder.name}</span>
+                    <span class="tpl-folder-count">{store.templates.filter(t => t.folderId === folder.id && t.deletedAt === null).length}</span>
+                    <div class="tpl-folder-actions">
+                      <button class="tpl-icon-btn" title="重命名" on:click|stopPropagation={() => void renameFolder(folder.id)}>
+                        <span class="ms-icon">edit</span>
+                      </button>
+                      <button class="tpl-icon-btn danger" title="删除" on:click|stopPropagation={() => void removeFolder(folder.id)}>
+                        <span class="ms-icon">delete</span>
+                      </button>
+                    </div>
+                  </div>
+                {/each}
+                {#if filteredFolders.length === 0}
+                  <div class="tpl-empty-hint">
+                    <span class="ms-icon">folder_off</span>
+                    <span>暂无文件夹</span>
+                  </div>
+                {/if}
+              </div>
+            </aside>
+
+            <!-- 右侧：模板列表 + 编辑 -->
+            <div class="tpl-main">
+              <!-- 模板列表头部 -->
+              <div class="tpl-main-header">
+                <div class="tpl-main-title">
+                  <h3>
+                    <span class="ms-icon">description</span>
+                    {activeFolders.find(f => f.id === selectedFolderId)?.name || '模板'}
+                  </h3>
+                  <span class="tpl-template-count">{filteredTemplates.length} 个模板</span>
+                </div>
+                <div class="tpl-main-actions">
+                  <div class="tpl-search-wrap">
+                    <span class="ms-icon tpl-search-icon">search</span>
+                    <input type="text" bind:value={templateSearch} placeholder="搜索模板名、key、内容…" class="tpl-search" />
+                  </div>
+                  <button class="tpl-create-btn" disabled={busy || !selectedFolderId} on:click={createTemplate}>
+                    <span class="ms-icon">add_circle</span> 新建模板
+                  </button>
+                </div>
+              </div>
+
+              <!-- 模板卡片网格 + 编辑器 -->
+              <div class="tpl-content-area" class:has-editor={templateDraft !== null}>
+                <div class="tpl-card-grid">
+                  {#each filteredTemplates as item}
+                    <div
+                      class="tpl-card"
+                      class:selected={item.id === selectedTemplateId}
+                      on:click={() => (selectedTemplateId = item.id)}
+                      on:keydown={(e) => e.key === 'Enter' && (selectedTemplateId = item.id)}
+                      role="button"
+                      tabindex="0"
+                    >
+                      <div class="tpl-card-header">
+                        <span class="tpl-card-name">{item.name}</span>
+                        <button class="tpl-icon-btn danger sm" title="删除" on:click|stopPropagation={() => void removeTemplate(item.id)}>
+                          <span class="ms-icon">close</span>
+                        </button>
+                      </div>
+                      {#if item.key}
+                        <div class="tpl-card-key">
+                          <span class="ms-icon">key</span> {item.key}
+                        </div>
+                      {/if}
+                      <div class="tpl-card-preview">{item.content || '（空内容）'}</div>
+                    </div>
+                  {/each}
+                  {#if filteredTemplates.length === 0}
+                    <div class="tpl-empty-card">
+                      <span class="ms-icon">note_add</span>
+                      <p>{selectedFolderId ? '暂无模板，点击上方按钮创建' : '请先选择一个文件夹'}</p>
+                    </div>
+                  {/if}
+                </div>
+
+                <!-- 编辑面板 -->
+                {#if templateDraft}
+                  <div class="tpl-editor">
+                    <div class="tpl-editor-header">
+                      <h4>
+                        <span class="ms-icon">edit_note</span> 编辑模板
+                      </h4>
+                      <button class="tpl-icon-btn" title="关闭编辑器" on:click={() => { selectedTemplateId = ''; templateDraft = null; }}>
+                        <span class="ms-icon">close</span>
+                      </button>
+                    </div>
+                    <div class="tpl-editor-body">
+                      <label class="tpl-field">
+                        <span class="tpl-field-label">
+                          <span class="ms-icon">badge</span> 模板名称
+                        </span>
+                        <input type="text" bind:value={templateDraft.name} class="tpl-input" />
+                      </label>
+
+                      <label class="tpl-field">
+                        <span class="tpl-field-label">
+                          <span class="ms-icon">key</span> 触发 Key <small>（可选，全局唯一）</small>
+                        </span>
+                        <input type="text" bind:value={templateDraft.key} placeholder="例如 addr" class="tpl-input" />
+                      </label>
+
+                      <label class="tpl-field tpl-field-grow">
+                        <span class="tpl-field-label">
+                          <span class="ms-icon">article</span> 模板内容
+                        </span>
+                        <textarea bind:value={templateDraft.content} class="tpl-textarea"></textarea>
+                      </label>
+                    </div>
+                    <div class="tpl-editor-footer">
+                      <button class="tpl-save-btn" disabled={busy} on:click={saveTemplateDraft}>
+                        <span class="ms-icon">save</span> 保存模板
+                      </button>
+                    </div>
+                  </div>
+                {/if}
+              </div>
+            </div>
           </div>
         </section>
       {/if}
@@ -718,6 +784,9 @@
     margin: 0 auto;
     padding: 10px;
     color: #132237;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
   }
 
   .topbar {
@@ -970,7 +1039,8 @@
     display: grid;
     grid-template-columns: 146px minmax(0, 1fr);
     gap: 8px;
-    height: calc(100vh - 92px);
+    flex: 1;
+    min-height: 0;
   }
 
   .tabs {
@@ -1006,6 +1076,7 @@
     background: linear-gradient(160deg, #ffffffe6 0%, #f6fbffe8 100%);
     padding: 10px;
     overflow: auto;
+    min-height: 0;
   }
 
   .field {
@@ -1076,153 +1147,698 @@
     cursor: not-allowed;
   }
 
-  .templates {
-    display: grid;
-    grid-template-columns: 240px 300px minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-    gap: 8px;
-    min-height: 100%;
+  /* ===== 模板管理 - 全新布局 ===== */
+
+  .tpl-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 0 !important;
+    overflow: hidden;
   }
 
-  .template-sync-strip {
-    grid-column: 1 / -1;
-    border: 1px solid #c9d8e8;
-    border-radius: 8px;
-    background: linear-gradient(90deg, #f8fcff 0%, #eef7ff 100%);
-    padding: 6px 8px;
+  /* --- 顶部同步栏 --- */
+  .tpl-sync-bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 10px;
+    padding: 8px 14px;
+    background: linear-gradient(135deg, #f0f7ff 0%, #e8f4f8 100%);
+    border-bottom: 1px solid #d5e3f0;
     flex-wrap: wrap;
+    flex-shrink: 0;
   }
 
-  .sync-stats {
-    display: inline-flex;
+  .tpl-sync-left {
+    display: flex;
     align-items: center;
     gap: 8px;
-    flex-wrap: wrap;
-    font-size: 11px;
-    color: #4d6d8f;
+    font-size: 12px;
+    color: #4a6a8a;
   }
 
-  .sync-badge {
-    border: 1px solid #9fc1df;
-    border-radius: 999px;
-    background: #e9f4ff;
-    color: #215179;
-    padding: 2px 8px;
-    font-weight: 600;
+  .tpl-sync-icon {
+    font-size: 20px;
+    color: #3a8fd4;
+    animation: syncPulse 3s ease-in-out infinite;
   }
 
-  .sync-actions {
-    display: inline-flex;
-    gap: 6px;
-    flex-wrap: wrap;
+  @keyframes syncPulse {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
   }
 
-  .column {
-    border: 1px solid #d0deeb;
-    border-radius: 8px;
-    padding: 8px;
-    background: linear-gradient(180deg, #f8fbff 0%, #f5f9ff 100%);
+  .tpl-sync-ver strong {
+    color: #1a4a6e;
+    font-weight: 700;
+  }
+
+  .tpl-sync-sep {
+    color: #c0d0e0;
+    font-weight: 300;
+  }
+
+  .tpl-sync-right {
     display: flex;
-    flex-direction: column;
+    gap: 6px;
+  }
+
+  .tpl-sync-btn {
+    border: 1px solid #b8d4ea !important;
+    background: rgba(255,255,255,0.85) !important;
+    color: #2a6090 !important;
+    border-radius: 8px !important;
+    padding: 5px 12px !important;
+    font-size: 12px !important;
+    backdrop-filter: blur(6px);
+    transition: all 0.2s ease;
+  }
+
+  .tpl-sync-btn:hover:not(:disabled) {
+    background: #fff !important;
+    border-color: #7ab3da !important;
+    box-shadow: 0 2px 8px rgba(42, 96, 144, 0.12);
+    transform: translateY(-1px);
+  }
+
+  .tpl-sync-btn:active:not(:disabled) {
+    transform: translateY(0) scale(0.98);
+  }
+
+  /* --- 主体区域 --- */
+  .tpl-body {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    flex: 1;
     min-height: 0;
   }
 
-  .column h2 {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 6px;
-  }
-
-  .inline-actions {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 5px;
-    margin-bottom: 6px;
-  }
-
-  ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
+  /* --- 左侧文件夹侧栏 --- */
+  .tpl-sidebar {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    overflow: auto;
+    border-right: 1px solid #dde8f2;
+    background: linear-gradient(180deg, #f8fbff 0%, #f2f6fb 100%);
+    overflow: hidden;
   }
 
-  li {
-    display: grid;
-    grid-template-columns: 1fr auto auto;
-    gap: 4px;
-    align-items: center;
-  }
-
-  .template-list li {
-    grid-template-columns: 1fr auto;
-  }
-
-  .item {
-    width: 100%;
-    text-align: left;
-    border: 1px solid #c7d8ea;
-    background: #fff;
-    color: #1d3858;
-    padding: 5px 8px;
+  .tpl-sidebar-header {
     display: flex;
+    align-items: center;
     justify-content: space-between;
+    padding: 10px 12px 6px;
+    flex-shrink: 0;
+  }
+
+  .tpl-sidebar-header h3 {
+    display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 12px;
-    border-radius: 6px;
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: #1d3a58;
   }
 
-  .item small {
-    color: #4e6a8b;
-    font-size: 10px;
+  .tpl-sidebar-header h3 .ms-icon {
+    font-size: 18px;
+    color: #4a90c4;
   }
 
-  li.active .item {
-    border-color: #71a4c2;
-    background: #eaf5fc;
-    color: #163d58;
-  }
-
-  .icon {
-    border: 1px solid #9ab6d4;
-    background: #edf4ff;
-    color: #1f4976;
-    width: 30px;
-    padding: 5px 0;
-    display: inline-flex;
-    justify-content: center;
+  .tpl-add-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px !important;
+    border: 1px dashed #b0c8e0 !important;
+    background: transparent !important;
+    color: #5a8ab5 !important;
+    padding: 0 !important;
+    display: inline-flex !important;
     align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
   }
 
-  .icon .ms-icon {
+  .tpl-add-btn:hover:not(:disabled) {
+    border-style: solid !important;
+    background: #e4f0fb !important;
+    color: #2a6a9e !important;
+    transform: scale(1.08);
+  }
+
+  .tpl-add-btn .ms-icon {
+    font-size: 18px;
+  }
+
+  /* --- 搜索框 --- */
+  .tpl-search-wrap {
+    position: relative;
+    padding: 0 10px;
+    margin-bottom: 6px;
+    flex-shrink: 0;
+  }
+
+  .tpl-search-icon {
+    position: absolute;
+    left: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 16px !important;
+    color: #96aec4;
+    pointer-events: none;
+  }
+
+  .tpl-search {
+    padding-left: 32px !important;
+    border-radius: 8px !important;
+    border: 1px solid #d5e0ec !important;
+    background: #fff !important;
+    font-size: 12px !important;
+    height: 32px;
+    transition: all 0.2s ease;
+  }
+
+  .tpl-search:focus {
+    border-color: #7ab4e0 !important;
+    box-shadow: 0 0 0 3px rgba(74, 144, 196, 0.1) !important;
+  }
+
+  /* --- 文件夹列表 --- */
+  .tpl-folder-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 8px 8px;
+  }
+
+  .tpl-folder-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    position: relative;
+    margin-bottom: 2px;
+    border: 1px solid transparent;
+  }
+
+  .tpl-folder-item:hover {
+    background: #eaf1f9;
+    border-color: #d0dfee;
+  }
+
+  .tpl-folder-item.active {
+    background: linear-gradient(135deg, #dbeaf8 0%, #d0e8f5 100%);
+    border-color: #a0c8e4;
+    box-shadow: 0 1px 4px rgba(42, 100, 160, 0.1);
+  }
+
+  .tpl-folder-icon {
+    font-size: 20px !important;
+    color: #6a9ec4;
+    flex-shrink: 0;
+    transition: color 0.2s ease;
+  }
+
+  .tpl-folder-item.active .tpl-folder-icon {
+    color: #2a7ab8;
+  }
+
+  .tpl-folder-name {
+    flex: 1;
+    font-size: 13px;
+    color: #2a4a68;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tpl-folder-item.active .tpl-folder-name {
+    color: #1a3a5a;
+    font-weight: 600;
+  }
+
+  .tpl-folder-count {
+    font-size: 10px;
+    color: #8aa4be;
+    background: #eaf0f8;
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-weight: 600;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+  }
+
+  .tpl-folder-item.active .tpl-folder-count {
+    background: #c0daf0;
+    color: #1a4a70;
+  }
+
+  .tpl-folder-actions {
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.18s ease;
+    flex-shrink: 0;
+  }
+
+  .tpl-folder-item:hover .tpl-folder-actions {
+    opacity: 1;
+  }
+
+  /* --- 通用小图标按钮 --- */
+  .tpl-icon-btn {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px !important;
+    border: none !important;
+    background: transparent !important;
+    color: #7a96b0 !important;
+    padding: 0 !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .tpl-icon-btn .ms-icon {
     font-size: 16px;
   }
 
-  .icon.danger {
-    border-color: #e1a3a7;
-    background: #ffedf0;
-    color: #8b2d34;
+  .tpl-icon-btn:hover {
+    background: #e0ecf6 !important;
+    color: #3a6a90 !important;
   }
 
-  .editor textarea {
-    resize: vertical;
+  .tpl-icon-btn.danger:hover {
+    background: #fde8ea !important;
+    color: #c0333c !important;
   }
 
-  .empty {
-    margin-top: 12px;
-    color: #5e7998;
+  .tpl-icon-btn.sm {
+    width: 22px;
+    height: 22px;
+  }
+
+  .tpl-icon-btn.sm .ms-icon {
+    font-size: 14px;
+  }
+
+  /* --- 空状态 --- */
+  .tpl-empty-hint {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 30px 10px;
+    color: #96aec4;
+    font-size: 12px;
+  }
+
+  .tpl-empty-hint .ms-icon {
+    font-size: 36px;
+    opacity: 0.5;
+  }
+
+  /* --- 右侧主体区域 --- */
+  .tpl-main {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  .tpl-main-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid #e6eef6;
+    background: #fff;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+
+  .tpl-main-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .tpl-main-title h3 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: #1d3a58;
+  }
+
+  .tpl-main-title h3 .ms-icon {
+    font-size: 20px;
+    color: #4a90c4;
+  }
+
+  .tpl-template-count {
+    font-size: 11px;
+    color: #8aa4be;
+    background: #eef4fb;
+    border-radius: 10px;
+    padding: 2px 10px;
+    font-weight: 500;
+  }
+
+  .tpl-main-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .tpl-main-actions .tpl-search-wrap {
+    margin-bottom: 0;
+    padding: 0;
+    width: 200px;
+  }
+
+  .tpl-create-btn {
+    border: none !important;
+    background: linear-gradient(135deg, #3a8fd4 0%, #2a7ab8 100%) !important;
+    color: #fff !important;
+    border-radius: 8px !important;
+    padding: 6px 14px !important;
+    font-size: 12px !important;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(42, 122, 184, 0.25);
+    transition: all 0.2s ease;
+  }
+
+  .tpl-create-btn:hover:not(:disabled) {
+    box-shadow: 0 4px 14px rgba(42, 122, 184, 0.35);
+    transform: translateY(-1px);
+  }
+
+  .tpl-create-btn:active:not(:disabled) {
+    transform: translateY(0) scale(0.97);
+  }
+
+  /* --- 卡片 + 编辑器容器 --- */
+  .tpl-content-area {
+    flex: 1;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+    transition: grid-template-columns 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    min-height: 0;
+  }
+
+  .tpl-content-area.has-editor {
+    grid-template-columns: 1fr 340px;
+  }
+
+  /* --- 模板卡片网格 --- */
+  .tpl-card-grid {
+    padding: 12px 14px;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    align-content: start;
+    min-height: 0;
+  }
+
+  .tpl-card {
+    border: 1px solid #dde8f2;
+    border-radius: 10px;
+    background: #fff;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .tpl-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #4a90c4, #68b8d7);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .tpl-card:hover {
+    border-color: #b0cce5;
+    box-shadow: 0 4px 16px rgba(42, 100, 160, 0.1);
+    transform: translateY(-2px);
+  }
+
+  .tpl-card:hover::before {
+    opacity: 1;
+  }
+
+  .tpl-card.selected {
+    border-color: #6aafe0;
+    background: linear-gradient(160deg, #f4faff 0%, #eaf4fb 100%);
+    box-shadow: 0 2px 12px rgba(42, 120, 180, 0.15);
+  }
+
+  .tpl-card.selected::before {
+    opacity: 1;
+    background: linear-gradient(90deg, #2a7ab8, #3a8fd4);
+  }
+
+  .tpl-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .tpl-card-name {
     font-size: 13px;
+    font-weight: 600;
+    color: #1d3a58;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
   }
 
+  .tpl-card-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    color: #6a8ea8;
+    background: #eef5fb;
+    border-radius: 4px;
+    padding: 1px 6px;
+    width: fit-content;
+  }
+
+  .tpl-card-key .ms-icon {
+    font-size: 12px;
+  }
+
+  .tpl-card-preview {
+    font-size: 11px;
+    color: #7a96b0;
+    line-height: 1.5;
+    max-height: 48px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    word-break: break-all;
+  }
+
+  /* --- 模板空状态 --- */
+  .tpl-empty-card {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 60px 20px;
+    color: #96aec4;
+  }
+
+  .tpl-empty-card .ms-icon {
+    font-size: 48px;
+    opacity: 0.4;
+  }
+
+  .tpl-empty-card p {
+    font-size: 13px;
+    margin: 0;
+    text-align: center;
+  }
+
+  /* --- 编辑器面板 --- */
+  .tpl-editor {
+    border-left: 1px solid #dde8f2;
+    background: linear-gradient(180deg, #fafcff 0%, #f5f9fe 100%);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    animation: editorSlideIn 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @keyframes editorSlideIn {
+    from {
+      opacity: 0;
+      transform: translateX(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .tpl-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid #e6eef6;
+    flex-shrink: 0;
+  }
+
+  .tpl-editor-header h4 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: #1d3a58;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .tpl-editor-header h4 .ms-icon {
+    font-size: 18px;
+    color: #4a90c4;
+  }
+
+  .tpl-editor-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+  }
+
+  .tpl-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .tpl-field-label {
+    font-size: 12px;
+    color: #4a6a8a;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .tpl-field-label .ms-icon {
+    font-size: 15px;
+    color: #6a9ec4;
+  }
+
+  .tpl-field-label small {
+    font-weight: 400;
+    color: #8aa4be;
+  }
+
+  .tpl-input {
+    border: 1px solid #d5e0ec !important;
+    border-radius: 8px !important;
+    padding: 7px 10px !important;
+    font-size: 13px !important;
+    background: #fff !important;
+    transition: all 0.2s ease;
+  }
+
+  .tpl-input:focus {
+    border-color: #7ab4e0 !important;
+    box-shadow: 0 0 0 3px rgba(74, 144, 196, 0.1) !important;
+  }
+
+  .tpl-field-grow {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tpl-textarea {
+    flex: 1;
+    min-height: 80px;
+    border: 1px solid #d5e0ec !important;
+    border-radius: 8px !important;
+    padding: 9px 10px !important;
+    font-size: 13px !important;
+    background: #fff !important;
+    resize: none;
+    line-height: 1.6;
+    transition: all 0.2s ease;
+  }
+
+  .tpl-textarea:focus {
+    border-color: #7ab4e0 !important;
+    box-shadow: 0 0 0 3px rgba(74, 144, 196, 0.1) !important;
+  }
+
+  .tpl-editor-footer {
+    padding: 10px 12px;
+    border-top: 1px solid #e6eef6;
+    flex-shrink: 0;
+  }
+
+  .tpl-save-btn {
+    width: 100%;
+    border: none !important;
+    background: linear-gradient(135deg, #2a9d5a 0%, #1f8a4e 100%) !important;
+    color: #fff !important;
+    border-radius: 9px !important;
+    padding: 9px 16px !important;
+    font-size: 13px !important;
+    font-weight: 600;
+    box-shadow: 0 2px 10px rgba(31, 138, 78, 0.25);
+    transition: all 0.2s ease;
+    justify-content: center;
+  }
+
+  .tpl-save-btn:hover:not(:disabled) {
+    box-shadow: 0 4px 16px rgba(31, 138, 78, 0.35);
+    transform: translateY(-1px);
+  }
+
+  .tpl-save-btn:active:not(:disabled) {
+    transform: translateY(0) scale(0.98);
+  }
+
+  /* ===== 响应式 ===== */
   @media (max-width: 1100px) {
     .content {
       grid-template-columns: 1fr;
@@ -1234,7 +1850,17 @@
       overflow-x: auto;
     }
 
-    .templates {
+    .tpl-body {
+      grid-template-columns: 1fr;
+    }
+
+    .tpl-sidebar {
+      border-right: none;
+      border-bottom: 1px solid #dde8f2;
+      max-height: 200px;
+    }
+
+    .tpl-content-area.has-editor {
       grid-template-columns: 1fr;
     }
 
