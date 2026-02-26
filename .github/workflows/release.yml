@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -42,7 +42,7 @@ jobs:
           releaseBody: |
             quickCV 自动构建发布
 
-            - 平台：Windows + macOS
+            - 平台：Windows
             - 触发方式：push tag
             - 产物：安装包（MSI / NSIS / DMG）
           releaseDraft: false
