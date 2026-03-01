@@ -195,8 +195,41 @@ async fn sync_pull(app: AppHandle) -> Result<SyncResult, String> {
         .map_err(|error| {
             logger::error(&app, "sync", &format!("sync_pull 拉取云端数据失败: {error}"));
             error
-        })?
-        .unwrap_or_default();
+        })?;
+
+    let Some(remote_store) = remote_store else {
+        let remote_file = settings.webdav.remote_file.trim();
+        logger::warn(
+            &app,
+            "sync",
+            &format!(
+                "sync_pull 远端文件不存在: {}",
+                if remote_file.is_empty() {
+                    "(空)"
+                } else {
+                    remote_file
+                }
+            ),
+        );
+        return Ok(SyncResult {
+            blocked: false,
+            level: "warn".to_string(),
+            message: format!(
+                "云端未找到远端文件（404）：{}，暂无可拉取数据；可先推送初始化云端文件",
+                if remote_file.is_empty() {
+                    "quickcv-data.json"
+                } else {
+                    remote_file
+                }
+            ),
+            local_version: local_store.dataset_version,
+            remote_version: 0,
+            conflict_copies: Vec::new(),
+            key_conflicts: Vec::new(),
+        });
+    };
+
+    let local_before = active_counts(&local_store);
 
     let now = storage::now_ts();
     let (mut merged, report) = sync::merge_stores(
@@ -214,9 +247,23 @@ async fn sync_pull(app: AppHandle) -> Result<SyncResult, String> {
     settings.last_synced_version = remote_store.dataset_version;
     storage::save_settings(&app, &settings)?;
 
+    let merged_after = active_counts(&merged);
+    let changed = local_before != merged_after
+        || !report.conflict_copies.is_empty()
+        || !report.key_conflicts.is_empty();
+    let message = if changed {
+        format!(
+            "已从云端拉取并自动合并（文件夹 {}→{}，模板 {}→{}）",
+            local_before.0, merged_after.0, local_before.1, merged_after.1
+        )
+    } else {
+        "已拉取并完成合并，数据无变更".to_string()
+    };
+
     let result = SyncResult {
         blocked: false,
-        message: "已从云端拉取并自动合并".to_string(),
+        level: "success".to_string(),
+        message,
         local_version: merged.dataset_version,
         remote_version: remote_store.dataset_version,
         conflict_copies: report.conflict_copies,
@@ -251,6 +298,7 @@ async fn sync_push(app: AppHandle) -> Result<SyncResult, String> {
     if remote_version > settings.last_synced_version {
         let result = SyncResult {
             blocked: true,
+            level: "warn".to_string(),
             message: format!(
                 "云端版本 {} 新于本地同步版本 {}，请先拉取后再推送",
                 remote_version, settings.last_synced_version
@@ -278,6 +326,7 @@ async fn sync_push(app: AppHandle) -> Result<SyncResult, String> {
 
     let result = SyncResult {
         blocked: false,
+        level: "success".to_string(),
         message: "已推送到云端".to_string(),
         local_version: local_store.dataset_version,
         remote_version: local_store.dataset_version,
@@ -554,6 +603,31 @@ fn hide_overlay_window(app: &AppHandle) -> tauri::Result<()> {
     }
 
     Ok(())
+}
+
+fn active_counts(store: &TemplateStore) -> (usize, usize) {
+    let folders = store
+        .folders
+        .iter()
+        .filter(|item| item.deleted_at.is_none())
+        .count();
+    let templates = store
+        .templates
+        .iter()
+        .filter(|item| item.deleted_at.is_none())
+        .count();
+    (folders, templates)
+}
+
+fn is_autostart_launch() -> bool {
+    std::env::args().any(|arg| {
+        let value = arg.trim().to_lowercase();
+        value == "--autostart"
+            || value == "--autorun"
+            || value == "-autostart"
+            || value == "/autostart"
+            || value.contains("autostart")
+    })
 }
 
 fn normalize_version(value: &str) -> String {
@@ -1054,6 +1128,13 @@ fn main() {
             setup_tray(app.handle())?;
             if let Ok(settings) = storage::load_settings(app.handle()) {
                 let _ = register_main_shortcut(app.handle(), &settings.shortcut);
+            }
+
+            if is_autostart_launch() {
+                logger::info(app.handle(), "startup", "detected autostart launch, hiding main window");
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
             }
             Ok(())
         })

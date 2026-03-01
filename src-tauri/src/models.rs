@@ -89,6 +89,7 @@ impl Default for TemplateStore {
 #[serde(rename_all = "camelCase")]
 pub struct SyncResult {
     pub blocked: bool,
+    pub level: String,
     pub message: String,
     pub local_version: i64,
     pub remote_version: i64,

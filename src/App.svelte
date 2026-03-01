@@ -77,6 +77,8 @@
   let templateDraft: TemplateItem | null = null;
   let latestVersion = "--";
   let checkingVersion = false;
+  let syncMode: "pull" | "push" | null = null;
+  let syncStage = "";
 
   let updateBanner: ReleaseCheckResult | null = null;
 
@@ -381,15 +383,25 @@
 
   const runSync = async (mode: "pull" | "push"): Promise<void> => {
     busy = true;
+    syncMode = mode;
+    syncStage = mode === "pull" ? "正在从云端拉取并合并数据..." : "正在推送本地数据到云端...";
     try {
       const result: SyncResult = mode === "pull" ? await syncPull() : await syncPush();
+      syncStage = "正在刷新本地数据...";
       settings = await loadSettings();
       store = await loadTemplateStore();
-      setNotice(result.blocked ? "error" : "success", makeSyncMessage(result));
+      const noticeLevel: NoticeType = result.blocked
+        ? "error"
+        : result.level === "warn"
+          ? "info"
+          : "success";
+      setNotice(noticeLevel, makeSyncMessage(result));
     } catch (error) {
       setNotice("error", asErrorMessage(error));
     } finally {
       busy = false;
+      syncMode = null;
+      syncStage = "";
     }
   };
 
@@ -627,12 +639,20 @@
             </div>
             <div class="tpl-sync-right">
               <button class="tpl-sync-btn" disabled={busy} on:click={() => void runSync("pull")}>
-                <span class="ms-icon">cloud_download</span> 拉取合并
+                <span class="ms-icon" class:syncing={busy && syncMode === "pull"}>{busy && syncMode === "pull" ? "sync" : "cloud_download"}</span>
+                {busy && syncMode === "pull" ? "拉取中..." : "拉取合并"}
               </button>
               <button class="tpl-sync-btn" disabled={busy} on:click={() => void runSync("push")}>
-                <span class="ms-icon">cloud_upload</span> 推送云端
+                <span class="ms-icon" class:syncing={busy && syncMode === "push"}>{busy && syncMode === "push" ? "sync" : "cloud_upload"}</span>
+                {busy && syncMode === "push" ? "推送中..." : "推送云端"}
               </button>
             </div>
+            {#if busy && syncMode}
+              <div class="tpl-sync-progress" role="status" aria-live="polite">
+                <span class="sync-dot"></span>
+                <span>{syncStage}</span>
+              </div>
+            {/if}
           </section>
 
           <!-- 主体区域 -->
@@ -1293,6 +1313,41 @@
     gap: 6px;
   }
 
+  .tpl-sync-progress {
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #2f5f87;
+    padding-top: 2px;
+  }
+
+  .sync-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: #2f8cd4;
+    box-shadow: 0 0 0 rgba(47, 140, 212, 0.45);
+    animation: syncDotPulse 1.2s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes syncDotPulse {
+    0% {
+      transform: scale(0.86);
+      box-shadow: 0 0 0 0 rgba(47, 140, 212, 0.45);
+    }
+    70% {
+      transform: scale(1);
+      box-shadow: 0 0 0 8px rgba(47, 140, 212, 0);
+    }
+    100% {
+      transform: scale(0.86);
+      box-shadow: 0 0 0 0 rgba(47, 140, 212, 0);
+    }
+  }
+
   .tpl-sync-btn {
     border: 1px solid #b8d4ea !important;
     background: rgba(255,255,255,0.85) !important;
@@ -1307,6 +1362,19 @@
     cursor: pointer;
     backdrop-filter: blur(6px);
     transition: all 0.2s ease;
+  }
+
+  .tpl-sync-btn .ms-icon.syncing {
+    animation: syncSpin 0.9s linear infinite;
+  }
+
+  @keyframes syncSpin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .tpl-sync-btn:hover:not(:disabled) {

@@ -40,6 +40,7 @@ export interface TemplateStore {
 
 export interface SyncResult {
   blocked: boolean;
+  level: "success" | "warn";
   message: string;
   localVersion: number;
   remoteVersion: number;
