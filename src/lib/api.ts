@@ -63,6 +63,10 @@ export const openConfigFolder = async (): Promise<void> => {
   return invokeTauri<void>("open_config_folder");
 };
 
+export const openMainTemplates = async (): Promise<void> => {
+  return invokeTauri<void>("open_main_templates");
+};
+
 export const openOverlay = async (context?: Partial<OverlayContext>): Promise<void> => {
   return invokeTauri<void>("open_overlay", {
     query: context?.query

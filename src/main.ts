@@ -3,6 +3,10 @@ import App from "./App.svelte";
 import Overlay from "./Overlay.svelte";
 
 const bootstrap = async (): Promise<void> => {
+  window.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+  });
+
   let RootComponent = App;
 
   if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {

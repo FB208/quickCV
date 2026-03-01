@@ -605,6 +605,13 @@ fn hide_overlay_window(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+#[tauri::command]
+fn open_main_templates(app: AppHandle) -> Result<(), String> {
+    show_main_window(&app).map_err(|error| format!("打开设置页失败: {error}"))?;
+    app.emit_to("main", "navigate_main_tab", "templates")
+        .map_err(|error| format!("切换到模板管理失败: {error}"))
+}
+
 fn active_counts(store: &TemplateStore) -> (usize, usize) {
     let folders = store
         .folders
@@ -1184,6 +1191,7 @@ fn main() {
             check_release_version,
             open_release_page,
             open_config_folder,
+            open_main_templates,
             open_overlay,
             close_overlay,
             set_overlay_dragging,

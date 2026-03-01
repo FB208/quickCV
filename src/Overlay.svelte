@@ -2,7 +2,14 @@
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { closeOverlay, getOverlayContext, insertTemplate, loadTemplateStore, setOverlayDragging } from "./lib/api";
+  import {
+    closeOverlay,
+    getOverlayContext,
+    insertTemplate,
+    loadTemplateStore,
+    openMainTemplates,
+    setOverlayDragging
+  } from "./lib/api";
   import { asErrorMessage } from "./lib/errors";
   import type { OverlayContext, TemplateItem, TemplateStore } from "./lib/types";
 
@@ -23,7 +30,13 @@
   let busy = false;
   let hint = "输入关键词搜索模板";
   let searchInput: HTMLInputElement | null = null;
+  let contextMenuOpen = false;
+  let contextMenuX = 0;
+  let contextMenuY = 0;
   const currentWindow = getCurrentWindow();
+
+  const CONTEXT_MENU_WIDTH = 164;
+  const CONTEXT_MENU_HEIGHT = 94;
 
   $: keyword = query.trim().toLowerCase();
   $: activeFolders = store.folders.filter((item) => item.deletedAt === null);
@@ -130,6 +143,12 @@
   };
 
   const handleKeydown = (event: KeyboardEvent): void => {
+    if (contextMenuOpen && event.key === "Escape") {
+      event.preventDefault();
+      contextMenuOpen = false;
+      return;
+    }
+
     if (busy) {
       return;
     }
@@ -233,6 +252,30 @@
     }
   };
 
+  const closeContextMenu = (): void => {
+    contextMenuOpen = false;
+  };
+
+  const openContextMenu = (event: MouseEvent): void => {
+    event.preventDefault();
+
+    const maxX = Math.max(8, window.innerWidth - CONTEXT_MENU_WIDTH - 8);
+    const maxY = Math.max(8, window.innerHeight - CONTEXT_MENU_HEIGHT - 8);
+    contextMenuX = Math.min(Math.max(8, event.clientX), maxX);
+    contextMenuY = Math.min(Math.max(8, event.clientY), maxY);
+    contextMenuOpen = true;
+  };
+
+  const openSettingsFromOverlay = async (): Promise<void> => {
+    contextMenuOpen = false;
+    try {
+      await closeOverlay();
+      await openMainTemplates();
+    } catch (error) {
+      hint = asErrorMessage(error, "打开设置页失败");
+    }
+  };
+
   const compact = (value: string): string => {
     const oneLine = value.replace(/\s+/g, " ").trim();
     if (!oneLine) {
@@ -260,7 +303,7 @@
   };
 </script>
 
-<main class="overlay">
+<main class="overlay" on:contextmenu={openContextMenu} on:pointerdown={closeContextMenu}>
   <section class="panel overlay-panel">
     <div class="drag-bar" data-tauri-drag-region on:pointerdown={startDrag}>
       <span class="drag-title" data-tauri-drag-region>
@@ -278,8 +321,8 @@
         placeholder="搜索文件夹 / 模板名称 / key / 内容"
         on:input={() => (focusPane = "templates")}
       />
-      <button class="qc-btn qc-btn-subtle ghost" disabled={busy} on:click={() => void cancelOverlay()}>
-        <span class="ms-icon">close</span>Esc
+      <button class="qc-btn qc-btn-subtle ghost" disabled={busy} on:click={() => void openSettingsFromOverlay()}>
+        <span class="ms-icon">settings</span>设置
       </button>
     </header>
 
@@ -287,7 +330,7 @@
       <span class="qc-chip"><span class="ms-icon">folder</span>文件夹 {filteredFolders.length}</span>
       <span class="qc-chip"><span class="ms-icon">description</span>模板 {filteredTemplates.length}</span>
       <span class="meta-text">{hint}</span>
-      <span class="meta-text">Enter 插入 · Esc 取消</span>
+      <span class="meta-text">Enter 插入 · Esc 关闭浮窗 · 右键更多操作</span>
     </div>
 
     {#if loading}
@@ -330,6 +373,31 @@
       </section>
     {/if}
   </section>
+
+  {#if contextMenuOpen}
+    <div
+      class="overlay-menu"
+      style={`left:${contextMenuX}px;top:${contextMenuY}px;`}
+      role="menu"
+      on:pointerdown|stopPropagation
+    >
+      <button class="overlay-menu-item" role="menuitem" on:click={() => void openSettingsFromOverlay()}>
+        <span class="ms-icon">settings</span>
+        <span>设置</span>
+      </button>
+      <button
+        class="overlay-menu-item danger"
+        role="menuitem"
+        on:click={() => {
+          contextMenuOpen = false;
+          void cancelOverlay();
+        }}
+      >
+        <span class="ms-icon">close</span>
+        <span>关闭</span>
+      </button>
+    </div>
+  {/if}
 </main>
 
 <style>
@@ -395,8 +463,49 @@
   }
 
   .ghost {
-    min-width: 74px;
+    min-width: 84px;
     padding-inline: 9px;
+  }
+
+  .overlay-menu {
+    position: fixed;
+    z-index: 80;
+    width: 164px;
+    border-radius: 10px;
+    border: 1px solid #abc9df;
+    background: linear-gradient(165deg, #fafdff 0%, #eef6fe 100%);
+    box-shadow: 0 12px 26px rgba(35, 82, 125, 0.24);
+    padding: 6px;
+    display: grid;
+    gap: 4px;
+    backdrop-filter: blur(8px);
+  }
+
+  .overlay-menu-item {
+    width: 100%;
+    border: 1px solid #c6ddee;
+    background: #ffffffcc;
+    color: #244f79;
+    border-radius: 8px;
+    font-size: 12px;
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all 0.16s ease;
+  }
+
+  .overlay-menu-item:hover {
+    border-color: #88b4d3;
+    box-shadow: 0 6px 14px rgba(47, 95, 142, 0.16);
+    transform: translateY(-1px);
+  }
+
+  .overlay-menu-item.danger {
+    color: #a03245;
+    border-color: #ddbfca;
+    background: #fff8f9d6;
   }
 
   .meta {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
   import {
     checkReleaseVersion,
     getAppVersion,
@@ -125,6 +126,7 @@
   }
 
   onMount(() => {
+    let unlistenTabNavigate: (() => void) | undefined;
     const keyRecorder = (event: KeyboardEvent): void => {
       if (!recordingShortcut) {
         return;
@@ -148,9 +150,24 @@
       setNotice("success", `快捷键已录制为 ${hotkey}`);
     };
 
+    const bindTabNavigate = async (): Promise<void> => {
+      if (!("__TAURI_INTERNALS__" in window)) {
+        return;
+      }
+      unlistenTabNavigate = await listen<string>("navigate_main_tab", (event) => {
+        if (event.payload === "general" || event.payload === "templates" || event.payload === "system") {
+          tab = event.payload;
+        }
+      });
+    };
+
     window.addEventListener("keydown", keyRecorder, true);
+    void bindTabNavigate();
     void bootstrap();
     return () => {
+      if (unlistenTabNavigate) {
+        unlistenTabNavigate();
+      }
       window.removeEventListener("keydown", keyRecorder, true);
     };
   });
