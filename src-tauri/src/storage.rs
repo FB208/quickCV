@@ -6,6 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
+use crate::logger;
 use crate::models::{Settings, TemplateStore};
 
 const SETTINGS_FILE: &str = "settings.json";
@@ -43,61 +44,91 @@ pub fn ensure_device_id(settings: &mut Settings) {
 }
 
 pub fn load_settings(app: &AppHandle) -> Result<Settings, String> {
+    logger::info(app, "storage", "load_settings start");
     let path = settings_path(app)?;
     if !path.exists() {
         let mut settings = Settings::default();
         ensure_device_id(&mut settings);
         save_settings(app, &settings)?;
+        logger::info(app, "storage", "load_settings created default settings file");
         return Ok(settings);
     }
 
-    let mut settings: Settings = read_json(&path)?;
+    let mut settings: Settings = read_json(&path).map_err(|error| {
+        logger::error(app, "storage", &format!("读取 settings.json 失败: {error}"));
+        error
+    })?;
     ensure_device_id(&mut settings);
     if settings.webdav.remote_file.trim().is_empty() {
         settings.webdav.remote_file = "quickcv-data.json".to_string();
     }
     save_settings(app, &settings)?;
+    logger::info(app, "storage", "load_settings success");
     Ok(settings)
 }
 
 pub fn save_settings(app: &AppHandle, settings: &Settings) -> Result<(), String> {
+    logger::info(app, "storage", "save_settings start");
     let mut value = settings.clone();
     ensure_device_id(&mut value);
     if value.webdav.remote_file.trim().is_empty() {
         value.webdav.remote_file = "quickcv-data.json".to_string();
     }
     let path = settings_path(app)?;
-    write_json(path, &value)
+    write_json(path, &value).map_err(|error| {
+        logger::error(app, "storage", &format!("写入 settings.json 失败: {error}"));
+        error
+    })?;
+    logger::info(app, "storage", "save_settings success");
+    Ok(())
 }
 
 pub fn load_template_store(app: &AppHandle) -> Result<TemplateStore, String> {
+    logger::info(app, "storage", "load_template_store start");
     let path = store_path(app)?;
     if !path.exists() {
         let store = TemplateStore::default();
         save_template_store_raw(app, &store)?;
+        logger::info(app, "storage", "load_template_store created default templates file");
         return Ok(store);
     }
 
-    read_json(&path)
+    let store = read_json(&path).map_err(|error| {
+        logger::error(app, "storage", &format!("读取 templates.json 失败: {error}"));
+        error
+    })?;
+    logger::info(app, "storage", "load_template_store success");
+    Ok(store)
 }
 
 pub fn save_template_store(
     app: &AppHandle,
     store: &TemplateStore,
 ) -> Result<TemplateStore, String> {
+    logger::info(app, "storage", "save_template_store start");
     validate_template_keys(store)?;
 
     let mut value = store.clone();
     value.dataset_version = now_ts();
 
     let path = store_path(app)?;
-    write_json(path, &value)?;
+    write_json(path, &value).map_err(|error| {
+        logger::error(app, "storage", &format!("写入 templates.json 失败: {error}"));
+        error
+    })?;
+    logger::info(app, "storage", "save_template_store success");
     Ok(value)
 }
 
 pub fn save_template_store_raw(app: &AppHandle, store: &TemplateStore) -> Result<(), String> {
+    logger::info(app, "storage", "save_template_store_raw start");
     let path = store_path(app)?;
-    write_json(path, store)
+    write_json(path, store).map_err(|error| {
+        logger::error(app, "storage", &format!("写入 templates.json(raw) 失败: {error}"));
+        error
+    })?;
+    logger::info(app, "storage", "save_template_store_raw success");
+    Ok(())
 }
 
 pub fn validate_template_keys(store: &TemplateStore) -> Result<(), String> {

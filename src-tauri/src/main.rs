@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod models;
+mod logger;
 mod storage;
 mod sync;
 mod webdav;
@@ -81,48 +82,108 @@ fn get_app_version(app: AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 fn load_settings(app: AppHandle) -> Result<Settings, String> {
+    logger::info(&app, "settings", "load_settings command start");
     let mut settings = storage::load_settings(&app)?;
     if let Ok(enabled) = app.autolaunch().is_enabled() {
         settings.launch_at_startup = enabled;
     }
+    logger::info(&app, "settings", "load_settings command success");
     Ok(settings)
 }
 
 #[tauri::command]
 fn save_settings(app: AppHandle, settings: Settings) -> Result<Settings, String> {
-    if settings.launch_at_startup {
-        app.autolaunch()
-            .enable()
-            .map_err(|error| format!("启用开机启动失败: {error}"))?;
-    } else {
-        app.autolaunch()
-            .disable()
-            .map_err(|error| format!("关闭开机启动失败: {error}"))?;
+    logger::info(&app, "settings", "save_settings command start");
+    let mut to_save = settings.clone();
+
+    let current_autostart = app.autolaunch().is_enabled().ok();
+    let should_update_autostart = current_autostart
+        .map(|enabled| enabled != settings.launch_at_startup)
+        .unwrap_or(true);
+
+    if should_update_autostart {
+        let apply = if settings.launch_at_startup {
+            app.autolaunch().enable()
+        } else {
+            app.autolaunch().disable()
+        };
+
+        if let Err(error) = apply {
+            let action = if settings.launch_at_startup {
+                "启用"
+            } else {
+                "关闭"
+            };
+            logger::warn(
+                &app,
+                "settings",
+                &format!("{action}开机启动失败，已继续保存其它设置: {error}"),
+            );
+
+            if let Ok(enabled) = app.autolaunch().is_enabled() {
+                to_save.launch_at_startup = enabled;
+            }
+        }
     }
 
-    storage::save_settings(&app, &settings)?;
-    register_main_shortcut(&app, &settings.shortcut)?;
-    storage::load_settings(&app)
+    storage::save_settings(&app, &to_save).map_err(|error| {
+        logger::error(&app, "settings", &format!("保存设置文件失败: {error}"));
+        error
+    })?;
+    register_main_shortcut(&app, &to_save.shortcut).map_err(|error| {
+        logger::error(&app, "settings", &format!("注册主快捷键失败: {error}"));
+        error
+    })?;
+
+    let mut loaded = storage::load_settings(&app).map_err(|error| {
+        logger::error(&app, "settings", &format!("回读设置文件失败: {error}"));
+        error
+    })?;
+
+    if let Ok(enabled) = app.autolaunch().is_enabled() {
+        loaded.launch_at_startup = enabled;
+    }
+
+    logger::info(&app, "settings", "save_settings command success");
+    Ok(loaded)
 }
 
 #[tauri::command]
 fn load_template_store(app: AppHandle) -> Result<TemplateStore, String> {
-    storage::load_template_store(&app)
+    logger::info(&app, "store", "load_template_store command start");
+    let store = storage::load_template_store(&app).map_err(|error| {
+        logger::error(&app, "store", &format!("读取模板库失败: {error}"));
+        error
+    })?;
+    logger::info(&app, "store", "load_template_store command success");
+    Ok(store)
 }
 
 #[tauri::command]
 fn save_template_store(app: AppHandle, store: TemplateStore) -> Result<TemplateStore, String> {
-    storage::save_template_store(&app, &store)
+    logger::info(&app, "store", "save_template_store command start");
+    let saved = storage::save_template_store(&app, &store).map_err(|error| {
+        logger::error(&app, "store", &format!("保存模板库失败: {error}"));
+        error
+    })?;
+    logger::info(&app, "store", "save_template_store command success");
+    Ok(saved)
 }
 
 #[tauri::command]
-async fn test_webdav(webdav: WebDavSettings) -> Result<String, String> {
-    webdav::test_connection(&webdav).await?;
+async fn test_webdav(app: AppHandle, webdav: WebDavSettings) -> Result<String, String> {
+    logger::info(&app, "webdav", "test_webdav command start");
+    webdav::test_connection(&webdav).await.map_err(|error| {
+        logger::error(&app, "webdav", &format!("test_webdav command failed: {error}"));
+        error
+    })?;
+    logger::info(&app, "webdav", "test_webdav command success");
     Ok("WebDAV 连通成功".to_string())
 }
 
 #[tauri::command]
 async fn sync_pull(app: AppHandle) -> Result<SyncResult, String> {
+    logger::info(&app, "sync", "sync_pull command start");
     let mut settings = storage::load_settings(&app)?;
     if settings.webdav.url.trim().is_empty() {
         return Err("请先在设置中填写 WebDAV 地址".to_string());
@@ -130,7 +191,11 @@ async fn sync_pull(app: AppHandle) -> Result<SyncResult, String> {
 
     let local_store = storage::load_template_store(&app)?;
     let remote_store = webdav::fetch_remote_store(&settings.webdav)
-        .await?
+        .await
+        .map_err(|error| {
+            logger::error(&app, "sync", &format!("sync_pull 拉取云端数据失败: {error}"));
+            error
+        })?
         .unwrap_or_default();
 
     let now = storage::now_ts();
@@ -149,18 +214,21 @@ async fn sync_pull(app: AppHandle) -> Result<SyncResult, String> {
     settings.last_synced_version = remote_store.dataset_version;
     storage::save_settings(&app, &settings)?;
 
-    Ok(SyncResult {
+    let result = SyncResult {
         blocked: false,
         message: "已从云端拉取并自动合并".to_string(),
         local_version: merged.dataset_version,
         remote_version: remote_store.dataset_version,
         conflict_copies: report.conflict_copies,
         key_conflicts: report.key_conflicts,
-    })
+    };
+    logger::info(&app, "sync", "sync_pull command success");
+    Ok(result)
 }
 
 #[tauri::command]
 async fn sync_push(app: AppHandle) -> Result<SyncResult, String> {
+    logger::info(&app, "sync", "sync_push command start");
     let mut settings = storage::load_settings(&app)?;
     if settings.webdav.url.trim().is_empty() {
         return Err("请先在设置中填写 WebDAV 地址".to_string());
@@ -169,14 +237,19 @@ async fn sync_push(app: AppHandle) -> Result<SyncResult, String> {
     let mut local_store = storage::load_template_store(&app)?;
     storage::validate_template_keys(&local_store)?;
 
-    let remote_store = webdav::fetch_remote_store(&settings.webdav).await?;
+    let remote_store = webdav::fetch_remote_store(&settings.webdav)
+        .await
+        .map_err(|error| {
+            logger::error(&app, "sync", &format!("sync_push 拉取云端数据失败: {error}"));
+            error
+        })?;
     let remote_version = remote_store
         .as_ref()
         .map(|item| item.dataset_version)
         .unwrap_or(0);
 
     if remote_version > settings.last_synced_version {
-        return Ok(SyncResult {
+        let result = SyncResult {
             blocked: true,
             message: format!(
                 "云端版本 {} 新于本地同步版本 {}，请先拉取后再推送",
@@ -186,24 +259,33 @@ async fn sync_push(app: AppHandle) -> Result<SyncResult, String> {
             remote_version,
             conflict_copies: Vec::new(),
             key_conflicts: Vec::new(),
-        });
+        };
+        logger::warn(&app, "sync", "sync_push blocked by remote newer version");
+        return Ok(result);
     }
 
     local_store.dataset_version = storage::now_ts();
-    webdav::push_remote_store(&settings.webdav, &local_store).await?;
+    webdav::push_remote_store(&settings.webdav, &local_store)
+        .await
+        .map_err(|error| {
+            logger::error(&app, "sync", &format!("sync_push 推送云端数据失败: {error}"));
+            error
+        })?;
 
     storage::save_template_store_raw(&app, &local_store)?;
     settings.last_synced_version = local_store.dataset_version;
     storage::save_settings(&app, &settings)?;
 
-    Ok(SyncResult {
+    let result = SyncResult {
         blocked: false,
         message: "已推送到云端".to_string(),
         local_version: local_store.dataset_version,
         remote_version: local_store.dataset_version,
         conflict_copies: Vec::new(),
         key_conflicts: Vec::new(),
-    })
+    };
+    logger::info(&app, "sync", "sync_push command success");
+    Ok(result)
 }
 
 #[tauri::command]
@@ -964,6 +1046,10 @@ fn main() {
             None,
         ))
         .setup(|app| {
+            if let Err(error) = logger::ensure_logs_dir(app.handle()) {
+                eprintln!("[logger] initialize failed: {error}");
+            }
+            logger::info(app.handle(), "startup", "quickCV booting");
             app.manage(RuntimeState::default());
             setup_tray(app.handle())?;
             if let Ok(settings) = storage::load_settings(app.handle()) {

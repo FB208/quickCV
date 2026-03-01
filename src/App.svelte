@@ -14,6 +14,7 @@
     syncPush,
     testWebDav
   } from "./lib/api";
+  import { asErrorMessage } from "./lib/errors";
   import { formatHotkey } from "./lib/hotkey";
   import type {
     Folder,
@@ -177,13 +178,6 @@
     return tokens.every((token) => ["Ctrl", "Alt", "Shift", "Meta"].includes(token));
   };
 
-  const asErrorMessage = (error: unknown): string => {
-    if (error instanceof Error) {
-      return error.message;
-    }
-    return "发生未知错误，请查看日志";
-  };
-
   const setNotice = (type: NoticeType, message: string): void => {
     noticeType = type;
     notice = message;
@@ -192,7 +186,12 @@
   const persistSettings = async (): Promise<void> => {
     busy = true;
     try {
+      const requestedLaunchAtStartup = settings.launchAtStartup;
       settings = await saveSettings(settings);
+      if (requestedLaunchAtStartup !== settings.launchAtStartup) {
+        setNotice("info", "设置已保存，但开机启动状态更新失败，请查看日志");
+        return;
+      }
       setNotice("success", "设置已保存");
     } catch (error) {
       setNotice("error", asErrorMessage(error));

@@ -3,6 +3,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { closeOverlay, getOverlayContext, insertTemplate, loadTemplateStore, setOverlayDragging } from "./lib/api";
+  import { asErrorMessage } from "./lib/errors";
   import type { OverlayContext, TemplateItem, TemplateStore } from "./lib/types";
 
   type FocusPane = "folders" | "templates";
@@ -218,7 +219,7 @@
     try {
       await insertTemplate(selectedTemplateId);
     } catch (error) {
-      hint = error instanceof Error ? error.message : "插入失败";
+      hint = asErrorMessage(error, "插入失败");
     } finally {
       busy = false;
     }
@@ -228,7 +229,7 @@
     try {
       await closeOverlay();
     } catch (error) {
-      hint = error instanceof Error ? error.message : "关闭浮窗失败";
+      hint = asErrorMessage(error, "关闭浮窗失败");
     }
   };
 
