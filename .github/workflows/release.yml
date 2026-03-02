@@ -25,9 +25,13 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies and build outputs
+        uses: Swatinem/rust-cache@v2
 
       - name: Install frontend dependencies
         run: npm ci
@@ -63,6 +67,6 @@ jobs:
 
             - 平台：Windows
             - 触发方式：push tag
-            - 产物：安装包（MSI / NSIS / DMG）
+            - 产物：安装包（NSIS .exe）
           releaseDraft: false
           prerelease: false
