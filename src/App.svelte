@@ -652,7 +652,7 @@
               <span class="ms-icon tpl-sync-icon">cloud_sync</span>
               <span class="tpl-sync-ver">本地 <strong>{store.datasetVersion || 0}</strong></span>
               <span class="tpl-sync-sep">|</span>
-              <span class="tpl-sync-ver">云端 <strong>{settings.lastSyncedVersion || 0}</strong></span>
+              <span class="tpl-sync-ver">同步基线 <strong>{settings.lastSyncedVersion || 0}</strong></span>
             </div>
             <div class="tpl-sync-right">
               <button class="tpl-sync-btn" disabled={busy} on:click={() => void runSync("pull")}>
