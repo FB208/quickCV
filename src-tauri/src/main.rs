@@ -38,6 +38,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 const OVERLAY_SAFE_MARGIN: i32 = 6;
 const RELEASE_API_URL: &str = "https://api.github.com/repos/FB208/quickCV/releases/latest";
 const RELEASE_PAGE_URL: &str = "https://github.com/FB208/quickCV/releases";
+const CURSOR_UIPI_BLOCKED: &str = "CURSOR_UIPI_BLOCKED";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,7 +66,9 @@ struct RuntimeState {
     overlay_open: AtomicBool,
     overlay_dragging: AtomicBool,
     overlay_inserting: AtomicBool,
+    cursor_copy_only_mode: AtomicBool,
     overlay_context: Mutex<OverlayContext>,
+    previous_input_window: Mutex<Option<isize>>,
 }
 
 #[tauri::command]
@@ -494,22 +497,57 @@ fn insert_template(app: AppHandle, template_id: String) -> Result<(), String> {
         })?;
 
     let runtime = app.state::<RuntimeState>();
+    let target_window = runtime
+        .previous_input_window
+        .lock()
+        .ok()
+        .and_then(|item| *item);
 
     // Write to clipboard directly
+    let content = template.content.clone();
     let mut clipboard = Clipboard::new().map_err(|e| format!("访问剪贴板失败: {e}"))?;
-    clipboard.set_text(template.content).map_err(|e| format!("写入剪贴板失败: {e}"))?;
+    clipboard
+        .set_text(content.clone())
+        .map_err(|e| format!("写入剪贴板失败: {e}"))?;
 
     // Hide overlay
     runtime.overlay_inserting.store(true, Ordering::SeqCst);
     let _ = hide_overlay_window(&app);
     runtime.overlay_inserting.store(false, Ordering::SeqCst);
 
-    // Wait for the window to gain focus (needed for all apps, especially Electron)
-    thread::sleep(Duration::from_millis(150));
+    restore_input_window_focus(target_window);
 
-    // Simulate Ctrl+V to paste
-    eprintln!("[INSERT] sending Ctrl+V...");
-    let result = send_paste_shortcut();
+    // Wait for the window to gain focus (needed for all apps, especially Electron)
+    thread::sleep(Duration::from_millis(180));
+
+    #[cfg(target_os = "windows")]
+    let target_is_cursor = is_cursor_window(target_window);
+    #[cfg(not(target_os = "windows"))]
+    let target_is_cursor = false;
+
+    if target_is_cursor && runtime.cursor_copy_only_mode.load(Ordering::SeqCst) {
+        eprintln!("[INSERT] cursor compatibility mode active, copied only");
+        logger::info(&app, "insert", "cursor compatibility mode active, copied only");
+        if let Ok(mut previous) = runtime.previous_input_window.lock() {
+            *previous = None;
+        }
+        return Ok(());
+    }
+
+    // Try platform-specific paste strategy
+    eprintln!("[INSERT] sending paste command...");
+    let mut result = paste_from_clipboard(target_window, &content);
+
+    if target_is_cursor {
+        if let Err(error) = &result {
+            if error == CURSOR_UIPI_BLOCKED {
+                runtime.cursor_copy_only_mode.store(true, Ordering::SeqCst);
+                eprintln!("[INSERT] cursor auto insert blocked by UIPI, switched to copy-only mode");
+                logger::info(&app, "insert", "cursor auto insert blocked by UIPI, switched to copy-only mode");
+                result = Ok(());
+            }
+        }
+    }
 
     match &result {
         Ok(()) => {
@@ -520,6 +558,10 @@ fn insert_template(app: AppHandle, template_id: String) -> Result<(), String> {
             eprintln!("[INSERT] === insert_template FAILED: {error}");
             logger::error(&app, "insert", &format!("insert_template failed: {error}"));
         }
+    }
+
+    if let Ok(mut previous) = runtime.previous_input_window.lock() {
+        *previous = None;
     }
 
     result
@@ -543,8 +585,13 @@ fn show_overlay_window_with_context(
         *saved = context.clone();
     }
 
+    let foreground_hwnd = capture_foreground_window_handle();
+    if let Ok(mut previous) = runtime.previous_input_window.lock() {
+        *previous = foreground_hwnd;
+    }
 
-    // 不再记录前台窗口（因为本身不会抢走焦点）
+
+    // 悬浮窗仍保持不抢焦点，但插入时需要回到原输入窗口
     let anchor = cursor_screen_position()
         .unwrap_or((OVERLAY_SAFE_MARGIN, OVERLAY_SAFE_MARGIN));
 
@@ -639,6 +686,9 @@ fn hide_overlay_window(app: &AppHandle) -> tauri::Result<()> {
     runtime.overlay_open.store(false, Ordering::SeqCst);
     if let Ok(mut context) = runtime.overlay_context.lock() {
         *context = OverlayContext::default();
+    }
+    if let Ok(mut previous) = runtime.previous_input_window.lock() {
+        *previous = None;
     }
 
     Ok(())
@@ -830,6 +880,319 @@ fn send_paste_shortcut() -> Result<(), String> {
     simulate_event(EventType::KeyRelease(Key::KeyV))?;
     eprintln!("[PASTE] KeyRelease(Ctrl)...");
     simulate_event(EventType::KeyRelease(modifier))
+}
+
+#[cfg(target_os = "windows")]
+fn paste_from_clipboard(target_window: Option<isize>, text: &str) -> Result<(), String> {
+    if is_cursor_window(target_window) {
+        eprintln!("[PASTE] target process is cursor.exe, try cursor-safe strategy");
+
+        match send_wm_paste_to_target(target_window) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                eprintln!("[PASTE] WM_PASTE failed in cursor: {error}");
+                if error.contains("0x80070005") {
+                    log_cursor_uipi_diagnostics(target_window);
+                    return Err(CURSOR_UIPI_BLOCKED.to_string());
+                }
+            }
+        }
+
+        match send_wm_char_text_to_target(target_window, text) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                eprintln!("[PASTE] WM_CHAR failed in cursor: {error}");
+                if error.contains("0x80070005") {
+                    log_cursor_uipi_diagnostics(target_window);
+                    return Err(CURSOR_UIPI_BLOCKED.to_string());
+                }
+                return Err(format!("Cursor 自动插入失败: {error}"));
+            }
+        }
+    }
+
+    send_paste_shortcut().or_else(|shortcut_error| {
+        eprintln!("[PASTE] Ctrl+V failed, fallback WM_PASTE: {shortcut_error}");
+        send_wm_paste_to_target(target_window)
+            .map_err(|message_error| format!("Ctrl+V 失败: {shortcut_error}; WM_PASTE 失败: {message_error}"))
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn paste_from_clipboard(_target_window: Option<isize>, _text: &str) -> Result<(), String> {
+    send_paste_shortcut()
+}
+
+#[cfg(target_os = "windows")]
+fn send_wm_char_text_to_target(target_window: Option<isize>, text: &str) -> Result<(), String> {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CHAR};
+
+    if text.is_empty() {
+        return Ok(());
+    }
+
+    let target = resolve_paste_target_window(target_window)
+        .ok_or_else(|| "未找到可接收字符消息的目标窗口".to_string())?;
+
+    let normalized = text.replace("\r\n", "\n");
+    for code_unit in normalized.encode_utf16() {
+        let unit = if code_unit == 0x000A { 0x000D } else { code_unit };
+        unsafe {
+            PostMessageW(Some(target), WM_CHAR, WPARAM(unit as usize), LPARAM(1))
+                .map_err(|error| format!("发送 WM_CHAR 失败: {error}"))?;
+        }
+        thread::sleep(Duration::from_millis(1));
+    }
+
+    eprintln!(
+        "[PASTE] WM_CHAR posted to hwnd={:?}, utf16_units={}",
+        target.0,
+        normalized.encode_utf16().count()
+    );
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn send_wm_paste_to_target(target_window: Option<isize>) -> Result<(), String> {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_PASTE};
+
+    let target = resolve_paste_target_window(target_window)
+        .ok_or_else(|| "未找到可接收粘贴消息的目标窗口".to_string())?;
+
+    unsafe {
+        PostMessageW(Some(target), WM_PASTE, WPARAM(0), LPARAM(0))
+            .map_err(|error| format!("发送 WM_PASTE 失败: {error}"))?;
+    }
+
+    eprintln!("[PASTE] WM_PASTE posted to hwnd={:?}", target.0);
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_paste_target_window(target_window: Option<isize>) -> Option<HWND> {
+    let raw = target_window.or_else(capture_foreground_window_handle)?;
+    let top = HWND(raw as *mut core::ffi::c_void);
+    let thread_id = unsafe { GetWindowThreadProcessId(top, None) };
+    if thread_id == 0 {
+        return Some(top);
+    }
+
+    let mut info = GUITHREADINFO::default();
+    info.cbSize = std::mem::size_of::<GUITHREADINFO>() as u32;
+    if unsafe { GetGUIThreadInfo(thread_id, &mut info) }.is_ok() {
+        if !info.hwndFocus.0.is_null() {
+            return Some(info.hwndFocus);
+        }
+        if !info.hwndCaret.0.is_null() {
+            return Some(info.hwndCaret);
+        }
+    }
+
+    Some(top)
+}
+
+#[cfg(target_os = "windows")]
+fn is_cursor_window(target_window: Option<isize>) -> bool {
+    let Some(raw) = target_window.or_else(capture_foreground_window_handle) else {
+        return false;
+    };
+
+    let process_name = window_process_name(raw);
+    if let Some(name) = &process_name {
+        eprintln!("[PASTE] target process: {name}");
+    }
+
+    process_name
+        .map(|name| name.eq_ignore_ascii_case("cursor.exe"))
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+fn window_process_name(hwnd_raw: isize) -> Option<String> {
+    use windows::core::PWSTR;
+    use windows::Win32::Foundation::{CloseHandle, HWND};
+    use windows::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    let hwnd = HWND(hwnd_raw as *mut core::ffi::c_void);
+    let mut process_id: u32 = 0;
+    unsafe {
+        let _ = GetWindowThreadProcessId(hwnd, Some(&mut process_id));
+    }
+    if process_id == 0 {
+        return None;
+    }
+
+    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id).ok()? };
+
+    let mut buffer = vec![0u16; 4096];
+    let mut length = buffer.len() as u32;
+    let query_result = unsafe {
+        QueryFullProcessImageNameW(
+            process,
+            PROCESS_NAME_WIN32,
+            PWSTR(buffer.as_mut_ptr()),
+            &mut length,
+        )
+    };
+    let _ = unsafe { CloseHandle(process) };
+
+    if query_result.is_err() || length == 0 {
+        return None;
+    }
+
+    let full_path = String::from_utf16_lossy(&buffer[..length as usize]);
+    let file_name = full_path
+        .rsplit('\\')
+        .next()
+        .unwrap_or(full_path.as_str())
+        .rsplit('/')
+        .next()
+        .unwrap_or(full_path.as_str());
+
+    Some(file_name.to_ascii_lowercase())
+}
+
+#[cfg(target_os = "windows")]
+fn process_integrity_pair(target_window: Option<isize>) -> Option<(u32, u32)> {
+    let self_level = current_process_integrity_level()?;
+    let target_level = target_process_integrity_level(target_window)?;
+    Some((self_level, target_level))
+}
+
+#[cfg(target_os = "windows")]
+fn current_process_integrity_level() -> Option<u32> {
+    use windows::Win32::System::Threading::GetCurrentProcess;
+
+    let process = unsafe { GetCurrentProcess() };
+    read_process_integrity_level(process)
+}
+
+#[cfg(target_os = "windows")]
+fn target_process_integrity_level(target_window: Option<isize>) -> Option<u32> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+
+    let raw = target_window.or_else(capture_foreground_window_handle)?;
+    let hwnd = HWND(raw as *mut core::ffi::c_void);
+    let mut process_id: u32 = 0;
+    unsafe {
+        let _ = GetWindowThreadProcessId(hwnd, Some(&mut process_id));
+    }
+    if process_id == 0 {
+        return None;
+    }
+
+    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id).ok()? };
+    let level = read_process_integrity_level(process);
+    let _ = unsafe { CloseHandle(process) };
+    level
+}
+
+#[cfg(target_os = "windows")]
+fn read_process_integrity_level(process: windows::Win32::Foundation::HANDLE) -> Option<u32> {
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::Security::{
+        GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, TokenIntegrityLevel,
+        TOKEN_MANDATORY_LABEL, TOKEN_QUERY,
+    };
+    use windows::Win32::System::Threading::OpenProcessToken;
+
+    let mut token = HANDLE(std::ptr::null_mut());
+    if unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut token) }.is_err() {
+        return None;
+    }
+
+    let mut return_len: u32 = 0;
+    let mut buffer = vec![0u8; 256];
+    let mut read_ok = unsafe {
+        GetTokenInformation(
+            token,
+            TokenIntegrityLevel,
+            Some(buffer.as_mut_ptr() as *mut core::ffi::c_void),
+            buffer.len() as u32,
+            &mut return_len,
+        )
+        .is_ok()
+    };
+
+    if !read_ok && return_len > buffer.len() as u32 {
+        buffer.resize(return_len as usize, 0);
+        read_ok = unsafe {
+            GetTokenInformation(
+                token,
+                TokenIntegrityLevel,
+                Some(buffer.as_mut_ptr() as *mut core::ffi::c_void),
+                buffer.len() as u32,
+                &mut return_len,
+            )
+            .is_ok()
+        };
+    }
+
+    let _ = unsafe { CloseHandle(token) };
+    if !read_ok {
+        return None;
+    }
+
+    let label = unsafe { &*(buffer.as_ptr() as *const TOKEN_MANDATORY_LABEL) };
+    let sid = label.Label.Sid;
+    if sid.0.is_null() {
+        return None;
+    }
+
+    let count_ptr = unsafe { GetSidSubAuthorityCount(sid) };
+    if count_ptr.is_null() {
+        return None;
+    }
+
+    let count = unsafe { *count_ptr } as u32;
+    if count == 0 {
+        return None;
+    }
+
+    let rid_ptr = unsafe { GetSidSubAuthority(sid, count - 1) };
+    if rid_ptr.is_null() {
+        return None;
+    }
+
+    Some(unsafe { *rid_ptr })
+}
+
+#[cfg(target_os = "windows")]
+fn integrity_level_name(level: u32) -> &'static str {
+    if level < 0x1000 {
+        "Untrusted"
+    } else if level < 0x2000 {
+        "Low"
+    } else if level < 0x3000 {
+        "Medium"
+    } else if level < 0x4000 {
+        "High"
+    } else if level < 0x5000 {
+        "System"
+    } else {
+        "Protected"
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn log_cursor_uipi_diagnostics(target_window: Option<isize>) {
+    eprintln!(
+        "[PASTE] access denied when posting message to cursor, possible privilege mismatch between quickCV and Cursor"
+    );
+
+    if let Some((self_level, target_level)) = process_integrity_pair(target_window) {
+        eprintln!(
+            "[PASTE] integrity: quickCV={}({self_level:#x}), target={}({target_level:#x})",
+            integrity_level_name(self_level),
+            integrity_level_name(target_level)
+        );
+    }
 }
 
 fn simulate_event(event: EventType) -> Result<(), String> {
