@@ -3,7 +3,7 @@ import type {
   ReleaseCheckResult,
   Settings,
   SyncResult,
-  TemplateStore
+  TemplateStore,
 } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -11,7 +11,10 @@ const isTauri = (): boolean => {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 };
 
-const invokeTauri = async <T>(command: string, payload?: Record<string, unknown>): Promise<T> => {
+const invokeTauri = async <T>(
+  command: string,
+  payload?: Record<string, unknown>,
+): Promise<T> => {
   if (!isTauri()) {
     throw new Error("当前不在 Tauri 环境中");
   }
@@ -31,7 +34,9 @@ export const loadTemplateStore = async (): Promise<TemplateStore> => {
   return invokeTauri<TemplateStore>("load_template_store");
 };
 
-export const saveTemplateStore = async (store: TemplateStore): Promise<TemplateStore> => {
+export const saveTemplateStore = async (
+  store: TemplateStore,
+): Promise<TemplateStore> => {
   return invokeTauri<TemplateStore>("save_template_store", { store });
 };
 
@@ -67,9 +72,11 @@ export const openMainTemplates = async (): Promise<void> => {
   return invokeTauri<void>("open_main_templates");
 };
 
-export const openOverlay = async (context?: Partial<OverlayContext>): Promise<void> => {
+export const openOverlay = async (
+  context?: Partial<OverlayContext>,
+): Promise<void> => {
   return invokeTauri<void>("open_overlay", {
-    query: context?.query
+    query: context?.query,
   });
 };
 
@@ -83,6 +90,10 @@ export const setOverlayDragging = async (dragging: boolean): Promise<void> => {
 
 export const getOverlayContext = async (): Promise<OverlayContext> => {
   return invokeTauri<OverlayContext>("get_overlay_context");
+};
+
+export const copyTemplate = async (templateId: string): Promise<void> => {
+  return invokeTauri<void>("copy_template", { templateId });
 };
 
 export const insertTemplate = async (templateId: string): Promise<void> => {

@@ -11,7 +11,7 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
-use arboard::{Clipboard, ImageData};
+use arboard::Clipboard;
 use models::{
     Folder, ReleaseCheckResult, Settings, SyncResult, TemplateItem, TemplateStore, WebDavSettings,
 };
@@ -36,7 +36,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GUITHREADINFO,
 };
 
-const CLIPBOARD_RESTORE_DELAY_MS: u64 = 140;
 const OVERLAY_SAFE_MARGIN: i32 = 6;
 const RELEASE_API_URL: &str = "https://api.github.com/repos/FB208/quickCV/releases/latest";
 const RELEASE_PAGE_URL: &str = "https://github.com/FB208/quickCV/releases";
@@ -61,18 +60,12 @@ impl Default for OverlayContext {
     }
 }
 
-enum ClipboardBackup {
-    Text(String),
-    Html(String),
-    Image(ImageData<'static>),
-    FileList(Vec<std::path::PathBuf>),
-    Empty,
-}
 
 #[derive(Default)]
 struct RuntimeState {
     overlay_open: AtomicBool,
     overlay_dragging: AtomicBool,
+    overlay_inserting: AtomicBool,
     overlay_context: Mutex<OverlayContext>,
     previous_input_window: Mutex<Option<isize>>,
 }
@@ -478,7 +471,8 @@ fn get_overlay_context(app: AppHandle) -> Result<OverlayContext, String> {
 }
 
 #[tauri::command]
-fn insert_template(app: AppHandle, template_id: String) -> Result<(), String> {
+fn copy_template(app: AppHandle, template_id: String) -> Result<(), String> {
+    eprintln!("[COPY] === copy_template START, id={template_id}");
     let store = storage::load_template_store(&app)?;
     let template = store
         .templates
@@ -487,6 +481,28 @@ fn insert_template(app: AppHandle, template_id: String) -> Result<(), String> {
         .cloned()
         .ok_or_else(|| "模板不存在或已删除".to_string())?;
 
+    let mut clipboard = Clipboard::new().map_err(|e| format!("访问剪贴板失败: {e}"))?;
+    clipboard.set_text(template.content).map_err(|e| format!("写入剪贴板失败: {e}"))?;
+    
+    eprintln!("[COPY] === copy_template SUCCESS");
+    Ok(())
+}
+
+#[tauri::command]
+fn insert_template(app: AppHandle, template_id: String) -> Result<(), String> {
+    eprintln!("[INSERT] === insert_template START, id={template_id}");
+    logger::info(&app, "insert", &format!("insert_template start, id={template_id}"));
+    let store = storage::load_template_store(&app)?;
+    let template = store
+        .templates
+        .iter()
+        .find(|item| item.id == template_id && item.deleted_at.is_none())
+        .cloned()
+        .ok_or_else(|| {
+            eprintln!("[INSERT] template not found or deleted");
+            "模板不存在或已删除".to_string()
+        })?;
+
     let runtime = app.state::<RuntimeState>();
     let target_window = runtime
         .previous_input_window
@@ -494,9 +510,42 @@ fn insert_template(app: AppHandle, template_id: String) -> Result<(), String> {
         .ok()
         .and_then(|item| *item);
 
+    // Write to clipboard directly
+    let mut clipboard = Clipboard::new().map_err(|e| format!("访问剪贴板失败: {e}"))?;
+    clipboard.set_text(template.content).map_err(|e| format!("写入剪贴板失败: {e}"))?;
+
+    // Hide overlay
+    runtime.overlay_inserting.store(true, Ordering::SeqCst);
     let _ = hide_overlay_window(&app);
-    inject_text_to_active_app(&app, &template.content, target_window)?;
-    Ok(())
+    runtime.overlay_inserting.store(false, Ordering::SeqCst);
+
+    // Restore focus
+    eprintln!("[INSERT] restore_input_window_focus: {:?}", target_window);
+    restore_input_window_focus(target_window);
+    
+    // Wait for the window to gain focus (needed for all apps, especially Electron)
+    thread::sleep(Duration::from_millis(200));
+
+    // Simulate Ctrl+V to paste
+    eprintln!("[INSERT] sending Ctrl+V...");
+    let result = send_paste_shortcut();
+
+    if let Ok(mut previous) = runtime.previous_input_window.lock() {
+        *previous = None;
+    }
+
+    match &result {
+        Ok(()) => {
+            eprintln!("[INSERT] === insert_template SUCCESS");
+            logger::info(&app, "insert", "insert_template success");
+        }
+        Err(error) => {
+            eprintln!("[INSERT] === insert_template FAILED: {error}");
+            logger::error(&app, "insert", &format!("insert_template failed: {error}"));
+        }
+    }
+
+    result
 }
 
 fn show_main_window(app: &AppHandle) -> tauri::Result<()> {
@@ -793,102 +842,9 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-fn inject_text_to_active_app(
-    app: &AppHandle,
-    text: &str,
-    target_window: Option<isize>,
-) -> Result<(), String> {
-    let runtime = app.state::<RuntimeState>();
 
-    let focus_target = if target_window.is_some() {
-        target_window
-    } else {
-        runtime
-            .previous_input_window
-            .lock()
-            .ok()
-            .and_then(|item| *item)
-    };
-    restore_input_window_focus(focus_target);
-    thread::sleep(Duration::from_millis(55));
 
-    paste_text(text)?;
 
-    if let Ok(mut previous) = runtime.previous_input_window.lock() {
-        *previous = None;
-    }
-
-    Ok(())
-}
-
-fn paste_text(text: &str) -> Result<(), String> {
-    let mut clipboard = Clipboard::new().map_err(|error| format!("访问剪贴板失败: {error}"))?;
-    let previous = capture_clipboard_backup(&mut clipboard);
-
-    clipboard
-        .set_text(text.to_string())
-        .map_err(|error| format!("写入剪贴板失败: {error}"))?;
-
-    send_paste_shortcut()?;
-
-    thread::sleep(Duration::from_millis(CLIPBOARD_RESTORE_DELAY_MS));
-    let should_restore = clipboard
-        .get_text()
-        .map(|current| current == text)
-        .unwrap_or(false);
-
-    if should_restore {
-        let _ = restore_clipboard_backup(&mut clipboard, previous);
-    }
-
-    Ok(())
-}
-
-fn capture_clipboard_backup(clipboard: &mut Clipboard) -> ClipboardBackup {
-    if let Ok(files) = clipboard.get().file_list() {
-        if !files.is_empty() {
-            return ClipboardBackup::FileList(files);
-        }
-    }
-
-    if let Ok(image) = clipboard.get_image() {
-        return ClipboardBackup::Image(image);
-    }
-
-    if let Ok(html) = clipboard.get().html() {
-        if !html.is_empty() {
-            return ClipboardBackup::Html(html);
-        }
-    }
-
-    if let Ok(text) = clipboard.get_text() {
-        return ClipboardBackup::Text(text);
-    }
-
-    ClipboardBackup::Empty
-}
-
-fn restore_clipboard_backup(
-    clipboard: &mut Clipboard,
-    backup: ClipboardBackup,
-) -> Result<(), String> {
-    match backup {
-        ClipboardBackup::Text(text) => clipboard
-            .set_text(text)
-            .map_err(|error| format!("恢复文本剪贴板失败: {error}")),
-        ClipboardBackup::Html(html) => clipboard
-            .set_html(html, None::<String>)
-            .map_err(|error| format!("恢复 HTML 剪贴板失败: {error}")),
-        ClipboardBackup::Image(image) => clipboard
-            .set_image(image)
-            .map_err(|error| format!("恢复图片剪贴板失败: {error}")),
-        ClipboardBackup::FileList(files) => clipboard
-            .set()
-            .file_list(&files)
-            .map_err(|error| format!("恢复文件列表剪贴板失败: {error}")),
-        ClipboardBackup::Empty => Ok(()),
-    }
-}
 
 fn send_paste_shortcut() -> Result<(), String> {
     #[cfg(target_os = "macos")]
@@ -896,9 +852,13 @@ fn send_paste_shortcut() -> Result<(), String> {
     #[cfg(not(target_os = "macos"))]
     let modifier = Key::ControlLeft;
 
+    eprintln!("[PASTE] KeyPress(Ctrl)...");
     simulate_event(EventType::KeyPress(modifier))?;
+    eprintln!("[PASTE] KeyPress(V)...");
     simulate_event(EventType::KeyPress(Key::KeyV))?;
+    eprintln!("[PASTE] KeyRelease(V)...");
     simulate_event(EventType::KeyRelease(Key::KeyV))?;
+    eprintln!("[PASTE] KeyRelease(Ctrl)...");
     simulate_event(EventType::KeyRelease(modifier))
 }
 
@@ -925,8 +885,30 @@ fn capture_foreground_window_handle() -> Option<isize> {
 
 #[cfg(target_os = "windows")]
 fn restore_input_window_focus(handle: Option<isize>) {
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
     if let Some(raw) = handle {
-        let _ = unsafe { SetForegroundWindow(HWND(raw as *mut core::ffi::c_void)) };
+        let target = HWND(raw as *mut core::ffi::c_void);
+        let result = unsafe { SetForegroundWindow(target) };
+        eprintln!("[INSERT] SetForegroundWindow result={:?}", result);
+
+        // 轮询等待目标窗口真正成为前台窗口（最多等 300ms）
+        // Electron 类应用特别需要，它们有多层子窗口进程，
+        // SetForegroundWindow 对父窗口生效但键盘输入消息可能需要几ms才能路由到编辑器
+        let deadline = std::time::Instant::now() + Duration::from_millis(300);
+        loop {
+            thread::sleep(Duration::from_millis(8));
+            let fg = unsafe { GetForegroundWindow() };
+            if fg == target {
+                eprintln!("[INSERT] target window is now foreground");
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                eprintln!("[INSERT] WARNING: target window did NOT become foreground within 300ms, fg={:?}", fg.0);
+                break;
+            }
+        }
+    } else {
+        eprintln!("[INSERT] restore_input_window_focus: no target handle");
     }
 }
 
@@ -1233,12 +1215,16 @@ fn main() {
                 }
 
                 if let WindowEvent::Focused(false) = event {
-                    // 拖动操作会短暂触发失焦，延迟检查避免误关闭
+                    // 拖动操作或插入操作会短暂触发失焦，延迟检查避免误关闭
                     let app_handle = window.app_handle().clone();
                     thread::spawn(move || {
                         thread::sleep(Duration::from_millis(150));
                         let runtime = app_handle.state::<RuntimeState>();
                         if runtime.overlay_dragging.load(Ordering::SeqCst) {
+                            return;
+                        }
+                        // 插入模板时不要关闭浮窗，避免干扰粘贴流程
+                        if runtime.overlay_inserting.load(Ordering::SeqCst) {
                             return;
                         }
                         if let Some(overlay) = app_handle.get_webview_window("overlay") {
@@ -1267,6 +1253,7 @@ fn main() {
             close_overlay,
             set_overlay_dragging,
             get_overlay_context,
+            copy_template,
             insert_template
         ])
         .run(tauri::generate_context!())

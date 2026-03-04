@@ -6,6 +6,7 @@
     closeOverlay,
     getOverlayContext,
     insertTemplate,
+    copyTemplate,
     loadTemplateStore,
     openMainTemplates,
     setOverlayDragging
@@ -122,7 +123,7 @@
 
     query = context.query || "";
     focusPane = "templates";
-    hint = "使用回车直接插入模板";
+    hint = "单击复制到剪贴板，双击/回车直接插入";
 
     setTimeout(() => {
       searchInput?.focus();
@@ -227,6 +228,22 @@
   const selectTemplate = (templateId: string): void => {
     selectedTemplateId = templateId;
     focusPane = "templates";
+  };
+
+  const handleTemplateSingleClick = async (templateId: string): Promise<void> => {
+    selectTemplate(templateId);
+    try {
+      await copyTemplate(templateId);
+      hint = "已复制到剪贴板";
+      // Auto clear hint
+      setTimeout(() => {
+        if (hint === "已复制到剪贴板") {
+          hint = "单击复制到剪贴板，双击/回车直接插入";
+        }
+      }, 2000);
+    } catch (error) {
+      hint = asErrorMessage(error, "复制失败");
+    }
   };
 
   const confirmInsert = async (): Promise<void> => {
@@ -355,7 +372,7 @@
               <li class:selected={template.id === selectedTemplateId}>
                 <button
                   class="pane-btn"
-                  on:click={() => selectTemplate(template.id)}
+                  on:click={() => handleTemplateSingleClick(template.id)}
                   on:dblclick={() => void confirmInsert()}
                 >
                   <div class="template-row">
