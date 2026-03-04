@@ -41,7 +41,7 @@
   };
 </script>
 
-<section class="panel tpl-panel">
+<section class="qc-panel tpl-panel">
   <section class="tpl-sync-bar">
     <div class="tpl-sync-left">
       <span class="ms-icon tpl-sync-icon">cloud_sync</span>
@@ -50,11 +50,11 @@
       <span class="tpl-sync-ver">同步基线 <strong>{settings.lastSyncedVersion || 0}</strong></span>
     </div>
     <div class="tpl-sync-right">
-      <button class="tpl-sync-btn" disabled={busy} on:click={() => onRunSync("pull")}>
+      <button class="qc-btn qc-btn-subtle tpl-sync-btn" disabled={busy} on:click={() => onRunSync("pull")}>
         <span class="ms-icon" class:syncing={busy && syncMode === "pull"}>{busy && syncMode === "pull" ? "sync" : "cloud_download"}</span>
         {busy && syncMode === "pull" ? "拉取中..." : "拉取合并"}
       </button>
-      <button class="tpl-sync-btn" disabled={busy} on:click={() => onRunSync("push")}>
+      <button class="qc-btn qc-btn-subtle tpl-sync-btn" disabled={busy} on:click={() => onRunSync("push")}>
         <span class="ms-icon" class:syncing={busy && syncMode === "push"}>{busy && syncMode === "push" ? "sync" : "cloud_upload"}</span>
         {busy && syncMode === "push" ? "推送中..." : "推送云端"}
       </button>
@@ -73,7 +73,7 @@
         <h3>
           <span class="ms-icon">folder</span> 文件夹
         </h3>
-        <button class="tpl-add-btn" title="新建文件夹" disabled={busy} on:click={() => onCreateFolder("新文件夹")}>
+        <button class="qc-icon-btn tpl-add-btn" title="新建文件夹" disabled={busy} on:click={() => onCreateFolder("新文件夹")}>
           <span class="ms-icon">add</span>
         </button>
       </div>
@@ -101,10 +101,10 @@
             <span class="tpl-folder-name">{folder.name}</span>
             <span class="tpl-folder-count">{templateCountByFolderId[folder.id] ?? 0}</span>
             <div class="tpl-folder-actions">
-              <button class="tpl-icon-btn" title="重命名" on:click|stopPropagation={() => onRenameFolder(folder.id)}>
+              <button class="qc-icon-btn tpl-icon-btn" title="重命名" on:click|stopPropagation={() => onRenameFolder(folder.id)}>
                 <span class="ms-icon">edit</span>
               </button>
-              <button class="tpl-icon-btn danger" title="删除" on:click|stopPropagation={() => onRemoveFolder(folder.id)}>
+              <button class="qc-icon-btn qc-icon-btn-danger tpl-icon-btn danger" title="删除" on:click|stopPropagation={() => onRemoveFolder(folder.id)}>
                 <span class="ms-icon">delete</span>
               </button>
             </div>
@@ -139,7 +139,7 @@
               class="tpl-search"
             />
           </div>
-          <button class="tpl-create-btn" disabled={busy || !selectedFolderId} on:click={onCreateTemplate}>
+          <button class="qc-btn tpl-create-btn" disabled={busy || !selectedFolderId} on:click={onCreateTemplate}>
             <span class="ms-icon">add_circle</span> 新建模板
           </button>
         </div>
@@ -158,7 +158,7 @@
             >
               <div class="tpl-card-header">
                 <span class="tpl-card-name">{item.name}</span>
-                <button class="tpl-icon-btn danger sm" title="删除" on:click|stopPropagation={() => onRemoveTemplate(item.id)}>
+                <button class="qc-icon-btn qc-icon-btn-danger qc-icon-btn-sm tpl-icon-btn danger sm" title="删除" on:click|stopPropagation={() => onRemoveTemplate(item.id)}>
                   <span class="ms-icon">close</span>
                 </button>
               </div>
@@ -184,7 +184,7 @@
               <h4>
                 <span class="ms-icon">edit_note</span> 编辑模板
               </h4>
-              <button class="tpl-icon-btn" title="关闭编辑器" on:click={onCloseTemplateEditor}>
+              <button class="qc-icon-btn tpl-icon-btn" title="关闭编辑器" on:click={onCloseTemplateEditor}>
                 <span class="ms-icon">close</span>
               </button>
             </div>
@@ -197,7 +197,7 @@
                   type="text"
                   value={templateDraft.name}
                   on:input={(event) => onUpdateTemplateDraft({ name: asInputValue(event) })}
-                  class="tpl-input"
+                  class="qc-input tpl-input"
                 />
               </label>
 
@@ -210,7 +210,7 @@
                   value={templateDraft.key ?? ""}
                   on:input={(event) => onUpdateTemplateDraft({ key: asInputValue(event) })}
                   placeholder="例如 addr"
-                  class="tpl-input"
+                  class="qc-input tpl-input"
                 />
               </label>
 
@@ -221,12 +221,12 @@
                 <textarea
                   value={templateDraft.content}
                   on:input={(event) => onUpdateTemplateDraft({ content: asTextareaValue(event) })}
-                  class="tpl-textarea"
+                  class="qc-textarea tpl-textarea"
                 ></textarea>
               </label>
             </div>
             <div class="tpl-editor-footer">
-              <button class="tpl-save-btn" disabled={busy} on:click={onSaveTemplateDraft}>
+              <button class="qc-btn tpl-save-btn" disabled={busy} on:click={onSaveTemplateDraft}>
                 <span class="ms-icon">save</span> 保存模板
               </button>
             </div>
@@ -238,15 +238,6 @@
 </section>
 
 <style>
-  .panel {
-    border-radius: 12px;
-    border: 1px solid var(--qc-border-soft);
-    background: linear-gradient(160deg, #ffffffe8 0%, #f6fbffe8 100%);
-    box-shadow: var(--qc-shadow-soft);
-    overflow: auto;
-    min-height: 0;
-  }
-
   .tpl-panel {
     display: flex;
     flex-direction: column;
@@ -289,16 +280,9 @@
   }
 
   .tpl-sync-btn {
-    border: 1px solid #b8d4ea;
-    background: rgba(255, 255, 255, 0.85);
-    color: #2a6090;
-    border-radius: 8px;
     padding: 5px 12px;
     font-size: 12px;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    cursor: pointer;
+    min-height: 30px;
   }
 
   .tpl-sync-btn .ms-icon.syncing {
@@ -344,6 +328,15 @@
     justify-content: space-between;
     padding: 10px 12px 6px;
     flex-shrink: 0;
+  }
+
+  .tpl-sidebar-header h3 {
+    margin: 0;
+    font-size: 13px;
+    color: #1d3a58;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .tpl-search-wrap {
@@ -417,6 +410,10 @@
     gap: 2px;
   }
 
+  .tpl-add-btn {
+    border-style: dashed;
+  }
+
   .tpl-main {
     display: flex;
     flex-direction: column;
@@ -439,6 +436,30 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+
+  .tpl-main-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .tpl-main-title h3 {
+    margin: 0;
+    font-size: 14px;
+    color: #1d3a58;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .tpl-template-count {
+    font-size: 11px;
+    color: #6484a3;
+    background: #eef5fd;
+    border: 1px solid #d5e3f1;
+    border-radius: 999px;
+    padding: 2px 9px;
   }
 
   .tpl-main-actions .tpl-search-wrap {
@@ -532,6 +553,21 @@
     border-bottom: 1px solid #e6eef6;
   }
 
+  .tpl-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .tpl-editor-header h4 {
+    margin: 0;
+    font-size: 13px;
+    color: #1f4267;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
   .tpl-editor-footer {
     border-bottom: none;
     border-top: 1px solid #e6eef6;
@@ -552,17 +588,24 @@
     gap: 4px;
   }
 
+  .tpl-field-label {
+    font-size: 12px;
+    color: #4d6f8f;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .tpl-field-label small {
+    color: #7e9ab5;
+  }
+
   .tpl-field-grow {
     flex: 1;
   }
 
-  .tpl-input,
-  .tpl-textarea {
-    border: 1px solid #d5e0ec;
-    border-radius: 8px;
-    padding: 7px 10px;
-    font-size: 13px;
-    background: #fff;
+  .tpl-input {
+    min-height: 33px;
   }
 
   .tpl-textarea {
@@ -571,17 +614,39 @@
     line-height: 1.6;
   }
 
-  .tpl-save-btn,
-  .tpl-create-btn,
-  .tpl-add-btn,
+  .tpl-create-btn {
+    min-height: 32px;
+    padding-inline: 14px;
+  }
+
+  .tpl-save-btn {
+    width: 100%;
+    min-height: 34px;
+  }
+
   .tpl-icon-btn {
-    cursor: pointer;
+    flex-shrink: 0;
   }
 
   .tpl-empty-card,
   .tpl-empty-hint {
     color: #96aec4;
     text-align: center;
+  }
+
+  .tpl-empty-card {
+    border: 1px dashed #cfdfed;
+    border-radius: 10px;
+    background: #f9fcff;
+    display: grid;
+    place-items: center;
+    gap: 6px;
+    padding: 24px 12px;
+  }
+
+  .tpl-empty-card p {
+    margin: 0;
+    font-size: 12px;
   }
 
   @keyframes syncSpin {

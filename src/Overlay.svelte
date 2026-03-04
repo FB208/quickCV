@@ -34,6 +34,7 @@
   let contextMenuOpen = false;
   let contextMenuX = 0;
   let contextMenuY = 0;
+  let dragResetTimer: number | null = null;
   const currentWindow = getCurrentWindow();
 
   const CONTEXT_MENU_WIDTH = 164;
@@ -83,14 +84,6 @@
       handleKeydown(event);
     };
 
-    const mousedownListener = (event: MouseEvent): void => {
-      const target = event.target as HTMLElement;
-      if (target && target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
-        // Prevent WebView2 from taking window focus on click
-        event.preventDefault();
-      }
-    };
-
     const run = async (): Promise<void> => {
       await bootstrap();
       unlisten = await listen<OverlayContext>("overlay_context", (event) => {
@@ -100,14 +93,16 @@
 
     void run();
     window.addEventListener("keydown", keyboardListener, true);
-    window.addEventListener("mousedown", mousedownListener, true);
 
     return () => {
+      if (dragResetTimer !== null) {
+        window.clearTimeout(dragResetTimer);
+        dragResetTimer = null;
+      }
       if (unlisten) {
         unlisten();
       }
       window.removeEventListener("keydown", keyboardListener, true);
-      window.removeEventListener("mousedown", mousedownListener, true);
     };
   });
 
@@ -136,6 +131,9 @@
     hint = "单击复制到剪贴板，双击/回车直接插入";
 
     setTimeout(() => {
+      void currentWindow.setFocus().catch(() => {
+        // no-op
+      });
       searchInput?.focus();
       searchInput?.select();
     }, 10);
@@ -164,7 +162,7 @@
       return;
     }
 
-    if (event.key === "Escape") {
+    if (event.key === "Escape" || event.key === "Esc") {
       event.preventDefault();
       void cancelOverlay();
       return;
@@ -325,19 +323,35 @@
     } catch {
       // 忽略拖动失败，不影响主流程
     } finally {
-      await setOverlayDragging(false);
+      if (dragResetTimer !== null) {
+        window.clearTimeout(dragResetTimer);
+      }
+      dragResetTimer = window.setTimeout(() => {
+        void setOverlayDragging(false);
+        dragResetTimer = null;
+      }, 260);
     }
   };
 </script>
 
 <main class="overlay" on:contextmenu={openContextMenu} on:pointerdown={closeContextMenu}>
-  <section class="panel overlay-panel">
+  <section class="qc-panel overlay-panel">
     <div class="drag-bar" data-tauri-drag-region on:pointerdown={startDrag}>
       <span class="drag-title" data-tauri-drag-region>
         <span class="ms-icon" data-tauri-drag-region>drag_indicator</span>
         quickCV 快捷模板
       </span>
-      <span data-tauri-drag-region>可拖动浮窗</span>
+      <div class="drag-actions">
+        <span data-tauri-drag-region>可拖动浮窗</span>
+        <button
+          class="qc-icon-btn overlay-close-btn"
+          title="关闭浮窗"
+          on:pointerdown|stopPropagation
+          on:click|stopPropagation={() => void cancelOverlay()}
+        >
+          <span class="ms-icon">close</span>
+        </button>
+      </div>
     </div>
 
     <header class="head">
@@ -442,8 +456,8 @@
     width: 100%;
     height: 100%;
     border-radius: 12px;
-    border: 1px solid var(--qc-border-strong);
-    background: linear-gradient(160deg, #f1f8ffed 0%, #eef8f5eb 100%);
+    border: 1px solid #a7c9e4;
+    background: linear-gradient(160deg, #f4fbffef 0%, #edf8ffec 52%, #eaf7f4e8 100%);
     box-shadow: var(--qc-shadow-strong);
     backdrop-filter: blur(14px);
     padding: 8px;
@@ -457,10 +471,10 @@
     justify-content: space-between;
     align-items: center;
     gap: 8px;
-    border: 1px dashed #9ec2da;
+    border: 1px dashed #8fb8d8;
     border-radius: 8px;
-    background: linear-gradient(145deg, #ebf5ffcf 0%, #e6f2f8cf 100%);
-    color: #3f6286;
+    background: linear-gradient(145deg, #ebf6ffdb 0%, #e3f2fbdb 100%);
+    color: #355f87;
     font-size: 10.5px;
     padding: 4px 8px;
     cursor: move;
@@ -499,8 +513,8 @@
     z-index: 80;
     width: 164px;
     border-radius: 10px;
-    border: 1px solid #abc9df;
-    background: linear-gradient(165deg, #fafdff 0%, #eef6fe 100%);
+    border: 1px solid #9ec2dd;
+    background: linear-gradient(165deg, #fcfeff 0%, #edf6ff 100%);
     box-shadow: 0 12px 26px rgba(35, 82, 125, 0.24);
     padding: 6px;
     display: grid;
@@ -510,9 +524,9 @@
 
   .overlay-menu-item {
     width: 100%;
-    border: 1px solid #c6ddee;
-    background: #ffffffcc;
-    color: #244f79;
+    border: 1px solid #c0d9eb;
+    background: linear-gradient(160deg, #ffffffdb 0%, #f1f8ffdb 100%);
+    color: #1f4f7d;
     border-radius: 8px;
     font-size: 12px;
     padding: 6px 8px;
@@ -524,7 +538,7 @@
   }
 
   .overlay-menu-item:hover {
-    border-color: #88b4d3;
+    border-color: #81b2d6;
     box-shadow: 0 6px 14px rgba(47, 95, 142, 0.16);
     transform: translateY(-1px);
   }
@@ -545,7 +559,24 @@
 
   .meta .qc-chip {
     padding: 3px 9px;
-    background: #eef5ff;
+    background: linear-gradient(145deg, #eef7ff 0%, #e8f5ff 100%);
+  }
+
+  .drag-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .overlay-close-btn {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    font-size: 11px;
+  }
+
+  .overlay-close-btn .ms-icon {
+    font-size: 14px;
   }
 
   .meta .qc-chip .ms-icon {
@@ -567,9 +598,9 @@
   }
 
   .pane {
-    border: 1px solid #cbdeed;
+    border: 1px solid #c0d9ea;
     border-radius: 10px;
-    background: linear-gradient(160deg, #ffffffeb 0%, #f6fbffde 100%);
+    background: linear-gradient(160deg, #ffffffee 0%, #f4faffde 100%);
     box-shadow: 0 4px 16px rgba(56, 109, 156, 0.08);
     padding: 6px;
     display: grid;
@@ -579,8 +610,8 @@
   }
 
   .pane.active {
-    border-color: #6eaad0;
-    box-shadow: 0 0 0 2px #d8ecf8, 0 7px 18px rgba(68, 128, 179, 0.16);
+    border-color: #63a6d2;
+    box-shadow: 0 0 0 2px #d7edfb, 0 7px 18px rgba(56, 121, 176, 0.16);
   }
 
   h2 {
@@ -606,9 +637,9 @@
   .pane-btn {
     width: 100%;
     text-align: left;
-    border: 1px solid #d2e2ee;
+    border: 1px solid #c8ddef;
     border-radius: 7px;
-    background: #fff;
+    background: linear-gradient(160deg, #ffffff 0%, #f7fbff 100%);
     color: #1d3a58;
     font-size: 12px;
     padding: 5px 7px;
@@ -617,8 +648,8 @@
   }
 
   .pane-btn:hover {
-    border-color: #b2cde3;
-    background: #f6fbff;
+    border-color: #a8c9e5;
+    background: linear-gradient(160deg, #f9fcff 0%, #eff8ff 100%);
   }
 
   li.selected .pane-btn {
@@ -667,10 +698,10 @@
   .loading {
     display: grid;
     place-items: center;
-    border: 1px dashed #a5c1d8;
+    border: 1px dashed #96bcd9;
     border-radius: 10px;
-    background: #f7fbffb0;
-    color: #44627f;
+    background: linear-gradient(145deg, #f7fcffbe 0%, #eef7ffbe 100%);
+    color: #3f6284;
     font-size: 12px;
   }
 

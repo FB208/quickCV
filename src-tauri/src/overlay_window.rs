@@ -67,11 +67,8 @@ pub fn open_overlay_with_context(app: &AppHandle, context: OverlayContext) -> Re
 
         #[cfg(target_os = "windows")]
         if let Ok(hwnd_raw) = window.hwnd() {
-            set_window_no_activate(hwnd_raw.0 as isize, true);
-            apply_noactivate_to_children(hwnd_raw.0 as isize);
+            set_window_no_activate(hwnd_raw.0 as isize, false);
         }
-
-        reinforce_overlay_noactivate(app);
     }
 
     runtime.overlay_open.store(true, Ordering::SeqCst);
@@ -190,12 +187,7 @@ pub fn restore_input_window_focus(handle: Option<isize>) -> bool {
 }
 
 pub fn prepare_overlay_window_noactivate(app: &AppHandle) {
-    if let Some(overlay) = app.get_webview_window("overlay") {
-        #[cfg(target_os = "windows")]
-        if let Ok(hwnd_raw) = overlay.hwnd() {
-            set_window_no_activate(hwnd_raw.0 as isize, true);
-        }
-    }
+    let _ = app;
 }
 
 pub fn handle_overlay_focus_lost(app_handle: AppHandle) {
@@ -314,45 +306,6 @@ fn set_window_no_activate(hwnd_raw: isize, no_activate: bool) {
 
 #[cfg(not(target_os = "windows"))]
 fn set_window_no_activate(_hwnd_raw: isize, _no_activate: bool) {}
-
-fn reinforce_overlay_noactivate(app: &AppHandle) {
-    #[cfg(target_os = "windows")]
-    {
-        let app_handle = app.clone();
-        thread::spawn(move || {
-            thread::sleep(Duration::from_millis(120));
-            if let Some(window) = app_handle.get_webview_window("overlay") {
-                if let Ok(hwnd_raw) = window.hwnd() {
-                    set_window_no_activate(hwnd_raw.0 as isize, true);
-                    apply_noactivate_to_children(hwnd_raw.0 as isize);
-                }
-            }
-        });
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn apply_noactivate_to_children(parent_raw: isize) {
-    use windows::core::BOOL;
-    use windows::Win32::Foundation::{HWND, LPARAM};
-    use windows::Win32::UI::WindowsAndMessaging::{
-        EnumChildWindows, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE,
-    };
-
-    unsafe extern "system" fn enum_child_proc(hwnd: HWND, _lparam: LPARAM) -> BOOL {
-        let mut ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-        if (ex_style & WS_EX_NOACTIVATE.0 as isize) == 0 {
-            ex_style |= WS_EX_NOACTIVATE.0 as isize;
-            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style);
-        }
-        true.into()
-    }
-
-    unsafe {
-        let hwnd = HWND(parent_raw as *mut core::ffi::c_void);
-        let _ = EnumChildWindows(Some(hwnd), Some(enum_child_proc), LPARAM(0));
-    }
-}
 
 #[cfg(target_os = "windows")]
 fn cursor_screen_position() -> Option<(i32, i32)> {

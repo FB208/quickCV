@@ -540,13 +540,13 @@
   };
 </script>
 
-<main class="shell">
-  <header class="topbar">
-    <div>
+<main class="qc-shell">
+  <header class="qc-topbar">
+    <div class="qc-brand">
       <h1>quickCV</h1>
       <p>轻量级模板插入管理工具</p>
     </div>
-    <div class="version">版本 {appVersion}</div>
+    <div class="qc-version-pill">版本 {appVersion}</div>
   </header>
 
   {#if updateBanner}
@@ -565,15 +565,15 @@
   {#if loading}
     <section class="loading">正在加载设置...</section>
   {:else}
-    <section class="content">
-      <nav class="tabs" aria-label="设置分组">
-        <button class="tab-btn" class:active={tab === "general"} on:click={() => (tab = "general")}>
+    <section class="qc-content">
+      <nav class="qc-tabs" aria-label="设置分组">
+        <button class="qc-tab-btn" class:active={tab === "general"} on:click={() => (tab = "general")}>
           <span class="ms-icon">tune</span>常规设置
         </button>
-        <button class="tab-btn" class:active={tab === "templates"} on:click={() => (tab = "templates")}>
+        <button class="qc-tab-btn" class:active={tab === "templates"} on:click={() => (tab = "templates")}>
           <span class="ms-icon">dashboard</span>模板管理
         </button>
-        <button class="tab-btn" class:active={tab === "system"} on:click={() => (tab = "system")}>
+        <button class="qc-tab-btn" class:active={tab === "system"} on:click={() => (tab = "system")}>
           <span class="ms-icon">computer</span>系统
         </button>
       </nav>
@@ -663,47 +663,6 @@
 </main>
 
 <style>
-  .shell {
-    width: min(1320px, 100%);
-    margin: 0 auto;
-    padding: 12px;
-    color: var(--qc-text-primary);
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    gap: 8px;
-  }
-
-  .topbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 4px 2px;
-  }
-
-  .topbar h1 {
-    margin: 0;
-    font-size: 24px;
-    letter-spacing: 0.3px;
-    color: #16395a;
-  }
-
-  .topbar p {
-    margin: 2px 0 0;
-    color: #5c7b99;
-    font-size: 12px;
-  }
-
-  .version {
-    border-radius: 999px;
-    background: linear-gradient(135deg, #ddf5ee 0%, #d9edf8 100%);
-    color: #1f5f50;
-    border: 1px solid #c0e2d9;
-    padding: 5px 12px;
-    font-size: 12px;
-    font-weight: 600;
-  }
-
   .update-banner {
     display: flex;
     align-items: center;
@@ -811,76 +770,4 @@
     box-shadow: var(--qc-shadow-soft);
   }
 
-  .content {
-    display: grid;
-    grid-template-columns: 168px minmax(0, 1fr);
-    gap: 8px;
-    flex: 1;
-    min-height: 0;
-  }
-
-  .tabs {
-    display: flex;
-    flex-direction: column;
-    gap: 7px;
-    border-radius: 12px;
-    background: linear-gradient(180deg, #ffffffd1 0%, #eff6ffbf 100%);
-    border: 1px solid var(--qc-border-soft);
-    box-shadow: var(--qc-shadow-soft);
-    padding: 8px;
-  }
-
-  .tab-btn {
-    text-align: left;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    padding: 9px 10px;
-    background: #f3f8ff;
-    color: #284664;
-    cursor: pointer;
-    font-size: 13px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    transition: all 0.2s ease;
-  }
-
-  .tab-btn .ms-icon {
-    font-size: 17px;
-    color: #4e89b9;
-  }
-
-  .tab-btn:hover {
-    border-color: #c4d9ee;
-    background: #f7fbff;
-    transform: translateX(1px);
-  }
-
-  .tab-btn.active {
-    background: linear-gradient(145deg, #d8eee7 0%, #d6eaf9 100%);
-    color: #184a3f;
-    border-color: #9bc8bd;
-    box-shadow: 0 4px 10px rgba(38, 100, 154, 0.12);
-  }
-
-  .tab-btn.active .ms-icon {
-    color: #2573ab;
-  }
-
-  /* ===== 响应式 ===== */
-  @media (max-width: 1100px) {
-    .content {
-      grid-template-columns: 1fr;
-      height: auto;
-    }
-
-    .tabs {
-      flex-direction: row;
-      overflow-x: auto;
-    }
-
-    .shell {
-      padding: 8px;
-    }
-  }
 </style>

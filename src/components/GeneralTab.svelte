@@ -21,15 +21,15 @@
   };
 </script>
 
-<section class="panel panel-page">
-  <div class="page-head">
-    <h2><span class="ms-icon">tune</span>常规设置</h2>
-    <p>统一管理快捷键、启动行为与 WebDAV 同步参数。</p>
+<section class="qc-panel qc-panel-page">
+  <div class="qc-page-head">
+    <h2 class="qc-page-title"><span class="ms-icon">tune</span>常规设置</h2>
+    <p class="qc-page-desc">统一管理快捷键、启动行为与 WebDAV 同步参数。</p>
   </div>
 
   <div class="general-grid">
-    <section class="general-card">
-      <h3 class="card-title"><span class="ms-icon">keyboard</span>快捷入口</h3>
+    <section class="qc-card general-card">
+      <h3 class="qc-card-title"><span class="ms-icon">keyboard</span>快捷入口</h3>
       <label class="qc-field">
         <span>全局快捷键</span>
         <div class="row">
@@ -68,8 +68,8 @@
       </div>
     </section>
 
-    <section class="general-card">
-      <h3 class="card-title"><span class="ms-icon">cloud_sync</span>WebDAV 配置</h3>
+    <section class="qc-card general-card">
+      <h3 class="qc-card-title"><span class="ms-icon">cloud_sync</span>WebDAV 配置</h3>
       <label class="qc-field">
         <span>地址</span>
         <input
@@ -125,82 +125,11 @@
 </section>
 
 <style>
-  .panel {
-    border-radius: 12px;
-    border: 1px solid var(--qc-border-soft);
-    background: linear-gradient(160deg, #ffffffe8 0%, #f6fbffe8 100%);
-    box-shadow: var(--qc-shadow-soft);
-    overflow: auto;
-    min-height: 0;
-  }
-
-  .panel-page {
-    padding: 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .page-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    border-bottom: 1px solid #e4eef8;
-    padding-bottom: 10px;
-  }
-
-  .page-head h2 {
-    margin: 0;
-    font-size: 17px;
-    color: #1a3e63;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .page-head h2 .ms-icon {
-    font-size: 20px;
-    color: #3c87c0;
-  }
-
-  .page-head p {
-    margin: 0;
-    font-size: 12px;
-    color: #6684a3;
-  }
-
   .general-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
     align-items: start;
-  }
-
-  .general-card {
-    border: 1px solid #d7e4f1;
-    border-radius: 12px;
-    background: linear-gradient(165deg, #ffffff 0%, #f5faff 100%);
-    box-shadow: 0 6px 20px rgba(39, 96, 148, 0.08);
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 9px;
-  }
-
-  .card-title {
-    margin: 0;
-    font-size: 14px;
-    color: #1e476d;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .card-title .ms-icon {
-    font-size: 18px;
-    color: #4a8ec3;
   }
 
   .row {
@@ -287,10 +216,6 @@
   @media (max-width: 1100px) {
     .general-grid {
       grid-template-columns: 1fr;
-    }
-
-    .page-head {
-      align-items: flex-start;
     }
 
     .row {
