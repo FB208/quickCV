@@ -1,0 +1,86 @@
+﻿cargo :     Checking qu
+ickcv v0.1.0 (D:\CodeSp
+ace\quickCV\src-tauri)
+所在位置 行:1 字符: 1
++ cargo check --color n
+ever 2>&1 | Out-File -F
+ilePath D:\CodeSpace\qu
+ic ...
++ ~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~
+    + CategoryInfo     
+         : NotSpecifi  
+  ed: (    Checking    
+ qu...ckCV\src-taur    
+i):String) [], Rem    o
+teException
+    + FullyQualifiedEr 
+   rorId : NativeComm  
+  andError
+ 
+warning: unused import:
+ `SetForegroundWindow`
+  --> src\main.rs:35:5
+   |
+35 |     SetForegroundW
+indow,
+   |     ^^^^^^^^^^^^^^
+^^^^^
+   |
+   = note: `#[warn(unus
+ed_imports)]` on by def
+ault
+
+error[E0609]: no field 
+`previous_input_window`
+ on type `tauri::State<
+'_, RuntimeState>`
+   --> src\main.rs:445:
+10
+    |
+445 |         .previous
+_input_window
+    |          ^^^^^^^^
+^^^^^^^^^^^^^ unknown f
+ield
+    |
+    = note: available f
+ields are: `overlay_ope
+n`, `overlay_dragging`,
+ `overlay_inserting`, `
+overlay_context`
+
+error[E0605]: non-primi
+tive cast: `WINDOW_EX_S
+TYLE` as `isize`
+   --> src\main.rs:577:
+29
+    |
+577 |                 e
+x_style |= (WS_EX_NOACT
+IVATE | WS_EX_TOOLWINDO
+W) as isize;
+    |                  
+           ^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^ an `as` exp
+ression can only be use
+d to convert between pr
+imitive types or to coe
+rce to a specific trait
+ object
+
+Some errors have detail
+ed explanations: E0605,
+ E0609.
+For more information ab
+out an error, try `rust
+c --explain E0605`.
+warning: `quickcv` (bin
+ "quickcv") generated 1
+ warning
+error: could not compil
+e `quickcv` (bin "quick
+cv") due to 2 previous 
+errors; 1 warning emitt
+ed

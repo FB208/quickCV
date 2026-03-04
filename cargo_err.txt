@@ -1,20 +1,99 @@
 ﻿cargo :     Checking quickcv v
 0.1.0 (D:\CodeSpace\quickCV\sr
 c-tauri)
-所在位置 行:1 字符: 36
-+ cd d:\CodeSpace\quickCV\src-
-tauri; cargo check 2>&1 | Out-
-File -FileP ...
-+                             
-       ~~~~~~~~~~~~~~~~
-    + CategoryInfo            
-  : NotSpecifi    ed: (    Che
-cking     qu...ckCV\src-taur  
-  i):String) [], Rem    oteExc
-eption
-    + FullyQualifiedEr    rorI
-d : NativeComm    andError
+所在位置 行:1 字符: 1
++ cargo check --color never 2>
+&1 | Out-File -Encoding utf8 D
+:\CodeSpace ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~
+    + CategoryInfo          : 
+    NotSpecified: (    Check  
+  ing qu...ckCV\src-tauri):   
+ String) [], RemoteExcepti    
+on
+    + FullyQualifiedErrorId : 
+    NativeCommandError
  
-    Finished `dev` profile [un
-optimized + debuginfo] target(
-s) in 1.30s
+warning: unused import: `SetFo
+regroundWindow`
+  --> src\main.rs:35:5
+   |
+35 |     SetForegroundWindow,
+   |     ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_impo
+rts)]` on by default
+
+error[E0308]: mismatched types
+   --> src\main.rs:925:41
+    |
+925 |             return CallW
+indowProcW(Some(old_proc), hwn
+d, msg, wparam, lparam);
+    |                         
+           ---- ^^^^^^^^ expec
+ted fn pointer, found `Option<
+...>`
+    |                         
+           |
+    |                         
+           arguments to this e
+num variant are incorrect
+    |
+    = note: expected fn pointe
+r `unsafe extern "system" fn(H
+WND, u32, WPARAM, LPARAM) -> L
+RESULT`
+                     found enu
+m `std::option::Option<unsafe 
+extern "system" fn(HWND, u32, 
+WPARAM, LPARAM) -> LRESULT>`
+help: the type constructed con
+tains `std::option::Option<uns
+afe extern "system" fn(HWND, u
+32, WPARAM, LPARAM) -> LRESULT
+>` due to the type of the argu
+ment passed
+   --> src\main.rs:925:36
+    |
+925 |             return CallW
+indowProcW(Some(old_proc), hwn
+d, msg, wparam, lparam);
+    |                         
+           ^^^^^--------^
+    |                         
+                |
+    |                         
+                this argument 
+influences the type of `Some`
+note: tuple variant defined he
+re
+   --> /rustc/05f9846f893b09a1
+be1fc8560e33fc3c815cfecb\libra
+ry\core\src\option.rs:580:5
+help: consider using `Option::
+expect` to unwrap the `std::op
+tion::Option<unsafe extern "sy
+stem" fn(HWND, u32, WPARAM, LP
+ARAM) -> LRESULT>` value, pani
+cking if the value is an `Opti
+on::None`
+    |
+925 |             return CallW
+indowProcW(Some(old_proc.expec
+t("REASON")), hwnd, msg, wpara
+m, lparam);
+    |                         
+                        ++++++
++++++++++++
+
+For more information about thi
+s error, try `rustc --explain 
+E0308`.
+warning: `quickcv` (bin "quick
+cv") generated 1 warning
+error: could not compile `quic
+kcv` (bin "quickcv") due to 1 
+previous error; 1 warning emit
+ted

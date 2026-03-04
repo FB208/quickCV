@@ -83,6 +83,14 @@
       handleKeydown(event);
     };
 
+    const mousedownListener = (event: MouseEvent): void => {
+      const target = event.target as HTMLElement;
+      if (target && target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+        // Prevent WebView2 from taking window focus on click
+        event.preventDefault();
+      }
+    };
+
     const run = async (): Promise<void> => {
       await bootstrap();
       unlisten = await listen<OverlayContext>("overlay_context", (event) => {
@@ -92,12 +100,14 @@
 
     void run();
     window.addEventListener("keydown", keyboardListener, true);
+    window.addEventListener("mousedown", mousedownListener, true);
 
     return () => {
       if (unlisten) {
         unlisten();
       }
       window.removeEventListener("keydown", keyboardListener, true);
+      window.removeEventListener("mousedown", mousedownListener, true);
     };
   });
 

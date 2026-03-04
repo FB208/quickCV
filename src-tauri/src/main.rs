@@ -32,7 +32,6 @@ use windows::Win32::Graphics::Gdi::ClientToScreen;
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
     GetCursorPos, GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId,
-    SetForegroundWindow,
     GUITHREADINFO,
 };
 
@@ -67,7 +66,6 @@ struct RuntimeState {
     overlay_dragging: AtomicBool,
     overlay_inserting: AtomicBool,
     overlay_context: Mutex<OverlayContext>,
-    previous_input_window: Mutex<Option<isize>>,
 }
 
 #[tauri::command]
@@ -441,15 +439,7 @@ fn open_overlay(app: AppHandle, query: Option<String>) -> Result<(), String> {
 
 #[tauri::command]
 fn close_overlay(app: AppHandle) -> Result<(), String> {
-    let runtime = app.state::<RuntimeState>();
-    let target_window = runtime
-        .previous_input_window
-        .lock()
-        .ok()
-        .and_then(|item| *item);
-
     hide_overlay_window(&app).map_err(|error| format!("关闭浮窗失败: {error}"))?;
-    restore_input_window_focus(target_window);
     Ok(())
 }
 
@@ -504,11 +494,6 @@ fn insert_template(app: AppHandle, template_id: String) -> Result<(), String> {
         })?;
 
     let runtime = app.state::<RuntimeState>();
-    let target_window = runtime
-        .previous_input_window
-        .lock()
-        .ok()
-        .and_then(|item| *item);
 
     // Write to clipboard directly
     let mut clipboard = Clipboard::new().map_err(|e| format!("访问剪贴板失败: {e}"))?;
@@ -519,20 +504,12 @@ fn insert_template(app: AppHandle, template_id: String) -> Result<(), String> {
     let _ = hide_overlay_window(&app);
     runtime.overlay_inserting.store(false, Ordering::SeqCst);
 
-    // Restore focus
-    eprintln!("[INSERT] restore_input_window_focus: {:?}", target_window);
-    restore_input_window_focus(target_window);
-    
     // Wait for the window to gain focus (needed for all apps, especially Electron)
-    thread::sleep(Duration::from_millis(200));
+    thread::sleep(Duration::from_millis(150));
 
     // Simulate Ctrl+V to paste
     eprintln!("[INSERT] sending Ctrl+V...");
     let result = send_paste_shortcut();
-
-    if let Ok(mut previous) = runtime.previous_input_window.lock() {
-        *previous = None;
-    }
 
     match &result {
         Ok(()) => {
@@ -566,26 +543,14 @@ fn show_overlay_window_with_context(
         *saved = context.clone();
     }
 
-    // 先捕获前台窗口句柄，并用它获取输入光标位置，必须在 show() 之前完成
-    let foreground_hwnd = capture_foreground_window_handle();
 
-    if let Ok(mut previous) = runtime.previous_input_window.lock() {
-        *previous = foreground_hwnd;
-    }
-
-    let anchor = caret_screen_position_from(foreground_hwnd)
-        .or_else(uia_caret_screen_position)
-        .or_else(|| imm_caret_screen_position(foreground_hwnd))
-        .or_else(cursor_screen_position)
+    // 不再记录前台窗口（因为本身不会抢走焦点）
+    let anchor = cursor_screen_position()
         .unwrap_or((OVERLAY_SAFE_MARGIN, OVERLAY_SAFE_MARGIN));
 
     runtime.overlay_dragging.store(false, Ordering::SeqCst);
 
     if let Some(window) = app.get_webview_window("overlay") {
-        window
-            .show()
-            .map_err(|error| format!("显示浮窗失败: {error}"))?;
-
         let (clamped_x, clamped_y) = clamp_overlay_position(app, &window, anchor.0 + 8, anchor.1 + 14);
         let _ = window.set_position(Position::Physical(PhysicalPosition {
             x: clamped_x,
@@ -593,8 +558,16 @@ fn show_overlay_window_with_context(
         }));
 
         window
-            .set_focus()
-            .map_err(|error| format!("聚焦浮窗失败: {error}"))?;
+            .show()
+            .map_err(|error| format!("显示浮窗失败: {error}"))?;
+            
+        #[cfg(target_os = "windows")]
+        if let Ok(hwnd_raw) = window.hwnd() {
+            set_window_no_activate(hwnd_raw.0 as isize, true);
+            apply_noactivate_to_children(hwnd_raw.0 as isize);
+        }
+
+        reinforce_overlay_noactivate(app);
     }
 
     runtime.overlay_open.store(true, Ordering::SeqCst);
@@ -666,9 +639,6 @@ fn hide_overlay_window(app: &AppHandle) -> tauri::Result<()> {
     runtime.overlay_open.store(false, Ordering::SeqCst);
     if let Ok(mut context) = runtime.overlay_context.lock() {
         *context = OverlayContext::default();
-    }
-    if let Ok(mut previous) = runtime.previous_input_window.lock() {
-        *previous = None;
     }
 
     Ok(())
@@ -885,7 +855,8 @@ fn capture_foreground_window_handle() -> Option<isize> {
 
 #[cfg(target_os = "windows")]
 fn restore_input_window_focus(handle: Option<isize>) {
-    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, SetForegroundWindow};
+    use windows::Win32::Foundation::HWND;
     if let Some(raw) = handle {
         let target = HWND(raw as *mut core::ffi::c_void);
         let result = unsafe { SetForegroundWindow(target) };
@@ -912,8 +883,74 @@ fn restore_input_window_focus(handle: Option<isize>) {
     }
 }
 
+fn set_window_no_activate(hwnd_raw: isize, no_activate: bool) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, SWP_FRAMECHANGED,
+        SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WS_EX_NOACTIVATE,
+    };
+
+    let hwnd = HWND(hwnd_raw as *mut core::ffi::c_void);
+    unsafe {
+        let mut style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        if no_activate {
+            style |= WS_EX_NOACTIVATE.0 as isize;
+        } else {
+            style &= !(WS_EX_NOACTIVATE.0 as isize);
+        }
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style);
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
+        );
+    }
+}
+
+fn reinforce_overlay_noactivate(app: &AppHandle) {
+    #[cfg(target_os = "windows")]
+    {
+        let app_handle = app.clone();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(120));
+            if let Some(window) = app_handle.get_webview_window("overlay") {
+                if let Ok(hwnd_raw) = window.hwnd() {
+                    set_window_no_activate(hwnd_raw.0 as isize, true);
+                    apply_noactivate_to_children(hwnd_raw.0 as isize);
+                }
+            }
+        });
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn apply_noactivate_to_children(parent_raw: isize) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumChildWindows, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE,
+    };
+    use windows::Win32::Foundation::{HWND, LPARAM};
+    use windows::core::BOOL;
+
+    unsafe extern "system" fn enum_child_proc(hwnd: HWND, _lparam: LPARAM) -> BOOL {
+        let mut ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        if (ex_style & WS_EX_NOACTIVATE.0 as isize) == 0 {
+            ex_style |= WS_EX_NOACTIVATE.0 as isize;
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style);
+        }
+        true.into()
+    }
+
+    unsafe {
+        let hwnd = HWND(parent_raw as *mut core::ffi::c_void);
+        let _ = EnumChildWindows(Some(hwnd), Some(enum_child_proc), LPARAM(0));
+    }
+}
+
 #[cfg(not(target_os = "windows"))]
-fn restore_input_window_focus(_handle: Option<isize>) {}
+fn set_window_no_activate(_hwnd_raw: isize, _no_activate: bool) {}
 
 #[cfg(target_os = "windows")]
 fn caret_screen_position_from(hwnd_raw: Option<isize>) -> Option<(i32, i32)> {
@@ -1196,6 +1233,14 @@ fn main() {
                     let _ = window.hide();
                 }
             }
+
+            if let Some(overlay) = app.get_webview_window("overlay") {
+                #[cfg(target_os = "windows")]
+                if let Ok(hwnd_raw) = overlay.hwnd() {
+                    set_window_no_activate(hwnd_raw.0 as isize, true);
+                }
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| {

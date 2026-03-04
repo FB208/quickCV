@@ -32,7 +32,7 @@
         "alwaysOnTop": true,
         "transparent": true,
         "skipTaskbar": true,
-        "focus": true
+        "focus": false
       }
     ],
     "security": {
