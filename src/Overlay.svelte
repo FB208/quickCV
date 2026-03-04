@@ -610,6 +610,7 @@
     border-radius: 7px;
     background: #fff;
     color: #1d3a58;
+    font-size: 12px;
     padding: 5px 7px;
     cursor: pointer;
     transition: all 0.16s ease;

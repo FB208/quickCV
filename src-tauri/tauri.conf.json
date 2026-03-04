@@ -16,6 +16,7 @@
         "title": "quickCV 设置",
         "width": 1320,
         "height": 860,
+        "visible": false,
         "minWidth": 980,
         "minHeight": 680,
         "resizable": true,
