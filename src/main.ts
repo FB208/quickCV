@@ -1,8 +1,9 @@
 import "./app.css";
 import App from "./App.svelte";
 import Overlay from "./Overlay.svelte";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
-const bootstrap = async (): Promise<void> => {
+const bootstrap = (): void => {
   window.addEventListener("contextmenu", (event) => {
     event.preventDefault();
   });
@@ -10,7 +11,6 @@ const bootstrap = async (): Promise<void> => {
   let RootComponent = App;
 
   if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-    const { getCurrentWindow } = await import("@tauri-apps/api/window");
     const currentWindow = getCurrentWindow();
     if (currentWindow.label === "overlay") {
       RootComponent = Overlay;
@@ -22,4 +22,4 @@ const bootstrap = async (): Promise<void> => {
   });
 };
 
-void bootstrap();
+bootstrap();
