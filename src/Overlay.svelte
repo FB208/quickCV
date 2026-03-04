@@ -133,7 +133,7 @@
 
     query = context.query || "";
     focusPane = "templates";
-    hint = "单击复制到剪贴板，双击/回车插入（受限应用请 Ctrl+V）";
+    hint = "单击复制到剪贴板，双击/回车直接插入";
 
     setTimeout(() => {
       searchInput?.focus();
@@ -248,7 +248,7 @@
       // Auto clear hint
       setTimeout(() => {
         if (hint === "已复制到剪贴板") {
-          hint = "单击复制到剪贴板，双击/回车插入（受限应用请 Ctrl+V）";
+          hint = "单击复制到剪贴板，双击/回车直接插入";
         }
       }, 2000);
     } catch (error) {
@@ -357,7 +357,7 @@
       <span class="qc-chip"><span class="ms-icon">folder</span>文件夹 {filteredFolders.length}</span>
       <span class="qc-chip"><span class="ms-icon">description</span>模板 {filteredTemplates.length}</span>
       <span class="meta-text">{hint}</span>
-      <span class="meta-text">Enter 插入/复制 · Esc 关闭浮窗 · 右键更多操作</span>
+      <span class="meta-text">Enter 插入 · Esc 关闭浮窗 · 右键更多操作</span>
     </div>
 
     {#if loading}

@@ -28,17 +28,13 @@ use tauri_plugin_opener::OpenerExt as _;
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::{HWND, POINT};
 #[cfg(target_os = "windows")]
-use windows::Win32::Graphics::Gdi::ClientToScreen;
-#[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetCursorPos, GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId,
-    GUITHREADINFO,
+    GetCursorPos, GetForegroundWindow,
 };
 
 const OVERLAY_SAFE_MARGIN: i32 = 6;
 const RELEASE_API_URL: &str = "https://api.github.com/repos/FB208/quickCV/releases/latest";
 const RELEASE_PAGE_URL: &str = "https://github.com/FB208/quickCV/releases";
-const CURSOR_UIPI_BLOCKED: &str = "CURSOR_UIPI_BLOCKED";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -60,13 +56,11 @@ impl Default for OverlayContext {
     }
 }
 
-
 #[derive(Default)]
 struct RuntimeState {
     overlay_open: AtomicBool,
     overlay_dragging: AtomicBool,
     overlay_inserting: AtomicBool,
-    cursor_copy_only_mode: AtomicBool,
     overlay_context: Mutex<OverlayContext>,
     previous_input_window: Mutex<Option<isize>>,
 }
@@ -504,10 +498,9 @@ fn insert_template(app: AppHandle, template_id: String) -> Result<(), String> {
         .and_then(|item| *item);
 
     // Write to clipboard directly
-    let content = template.content.clone();
     let mut clipboard = Clipboard::new().map_err(|e| format!("访问剪贴板失败: {e}"))?;
     clipboard
-        .set_text(content.clone())
+        .set_text(template.content)
         .map_err(|e| format!("写入剪贴板失败: {e}"))?;
 
     // Hide overlay
@@ -520,34 +513,9 @@ fn insert_template(app: AppHandle, template_id: String) -> Result<(), String> {
     // Wait for the window to gain focus (needed for all apps, especially Electron)
     thread::sleep(Duration::from_millis(180));
 
-    #[cfg(target_os = "windows")]
-    let target_is_cursor = is_cursor_window(target_window);
-    #[cfg(not(target_os = "windows"))]
-    let target_is_cursor = false;
-
-    if target_is_cursor && runtime.cursor_copy_only_mode.load(Ordering::SeqCst) {
-        eprintln!("[INSERT] cursor compatibility mode active, copied only");
-        logger::info(&app, "insert", "cursor compatibility mode active, copied only");
-        if let Ok(mut previous) = runtime.previous_input_window.lock() {
-            *previous = None;
-        }
-        return Ok(());
-    }
-
-    // Try platform-specific paste strategy
-    eprintln!("[INSERT] sending paste command...");
-    let mut result = paste_from_clipboard(target_window, &content);
-
-    if target_is_cursor {
-        if let Err(error) = &result {
-            if error == CURSOR_UIPI_BLOCKED {
-                runtime.cursor_copy_only_mode.store(true, Ordering::SeqCst);
-                eprintln!("[INSERT] cursor auto insert blocked by UIPI, switched to copy-only mode");
-                logger::info(&app, "insert", "cursor auto insert blocked by UIPI, switched to copy-only mode");
-                result = Ok(());
-            }
-        }
-    }
+    // Simulate Ctrl+V to paste
+    eprintln!("[INSERT] sending Ctrl+V...");
+    let result = send_paste_shortcut();
 
     match &result {
         Ok(()) => {
@@ -590,7 +558,6 @@ fn show_overlay_window_with_context(
         *previous = foreground_hwnd;
     }
 
-
     // 悬浮窗仍保持不抢焦点，但插入时需要回到原输入窗口
     let anchor = cursor_screen_position()
         .unwrap_or((OVERLAY_SAFE_MARGIN, OVERLAY_SAFE_MARGIN));
@@ -607,7 +574,7 @@ fn show_overlay_window_with_context(
         window
             .show()
             .map_err(|error| format!("显示浮窗失败: {error}"))?;
-            
+
         #[cfg(target_os = "windows")]
         if let Ok(hwnd_raw) = window.hwnd() {
             set_window_no_activate(hwnd_raw.0 as isize, true);
@@ -862,10 +829,6 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-
-
-
-
 fn send_paste_shortcut() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let modifier = Key::MetaLeft;
@@ -880,319 +843,6 @@ fn send_paste_shortcut() -> Result<(), String> {
     simulate_event(EventType::KeyRelease(Key::KeyV))?;
     eprintln!("[PASTE] KeyRelease(Ctrl)...");
     simulate_event(EventType::KeyRelease(modifier))
-}
-
-#[cfg(target_os = "windows")]
-fn paste_from_clipboard(target_window: Option<isize>, text: &str) -> Result<(), String> {
-    if is_cursor_window(target_window) {
-        eprintln!("[PASTE] target process is cursor.exe, try cursor-safe strategy");
-
-        match send_wm_paste_to_target(target_window) {
-            Ok(()) => return Ok(()),
-            Err(error) => {
-                eprintln!("[PASTE] WM_PASTE failed in cursor: {error}");
-                if error.contains("0x80070005") {
-                    log_cursor_uipi_diagnostics(target_window);
-                    return Err(CURSOR_UIPI_BLOCKED.to_string());
-                }
-            }
-        }
-
-        match send_wm_char_text_to_target(target_window, text) {
-            Ok(()) => return Ok(()),
-            Err(error) => {
-                eprintln!("[PASTE] WM_CHAR failed in cursor: {error}");
-                if error.contains("0x80070005") {
-                    log_cursor_uipi_diagnostics(target_window);
-                    return Err(CURSOR_UIPI_BLOCKED.to_string());
-                }
-                return Err(format!("Cursor 自动插入失败: {error}"));
-            }
-        }
-    }
-
-    send_paste_shortcut().or_else(|shortcut_error| {
-        eprintln!("[PASTE] Ctrl+V failed, fallback WM_PASTE: {shortcut_error}");
-        send_wm_paste_to_target(target_window)
-            .map_err(|message_error| format!("Ctrl+V 失败: {shortcut_error}; WM_PASTE 失败: {message_error}"))
-    })
-}
-
-#[cfg(not(target_os = "windows"))]
-fn paste_from_clipboard(_target_window: Option<isize>, _text: &str) -> Result<(), String> {
-    send_paste_shortcut()
-}
-
-#[cfg(target_os = "windows")]
-fn send_wm_char_text_to_target(target_window: Option<isize>, text: &str) -> Result<(), String> {
-    use windows::Win32::Foundation::{LPARAM, WPARAM};
-    use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CHAR};
-
-    if text.is_empty() {
-        return Ok(());
-    }
-
-    let target = resolve_paste_target_window(target_window)
-        .ok_or_else(|| "未找到可接收字符消息的目标窗口".to_string())?;
-
-    let normalized = text.replace("\r\n", "\n");
-    for code_unit in normalized.encode_utf16() {
-        let unit = if code_unit == 0x000A { 0x000D } else { code_unit };
-        unsafe {
-            PostMessageW(Some(target), WM_CHAR, WPARAM(unit as usize), LPARAM(1))
-                .map_err(|error| format!("发送 WM_CHAR 失败: {error}"))?;
-        }
-        thread::sleep(Duration::from_millis(1));
-    }
-
-    eprintln!(
-        "[PASTE] WM_CHAR posted to hwnd={:?}, utf16_units={}",
-        target.0,
-        normalized.encode_utf16().count()
-    );
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-fn send_wm_paste_to_target(target_window: Option<isize>) -> Result<(), String> {
-    use windows::Win32::Foundation::{LPARAM, WPARAM};
-    use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_PASTE};
-
-    let target = resolve_paste_target_window(target_window)
-        .ok_or_else(|| "未找到可接收粘贴消息的目标窗口".to_string())?;
-
-    unsafe {
-        PostMessageW(Some(target), WM_PASTE, WPARAM(0), LPARAM(0))
-            .map_err(|error| format!("发送 WM_PASTE 失败: {error}"))?;
-    }
-
-    eprintln!("[PASTE] WM_PASTE posted to hwnd={:?}", target.0);
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-fn resolve_paste_target_window(target_window: Option<isize>) -> Option<HWND> {
-    let raw = target_window.or_else(capture_foreground_window_handle)?;
-    let top = HWND(raw as *mut core::ffi::c_void);
-    let thread_id = unsafe { GetWindowThreadProcessId(top, None) };
-    if thread_id == 0 {
-        return Some(top);
-    }
-
-    let mut info = GUITHREADINFO::default();
-    info.cbSize = std::mem::size_of::<GUITHREADINFO>() as u32;
-    if unsafe { GetGUIThreadInfo(thread_id, &mut info) }.is_ok() {
-        if !info.hwndFocus.0.is_null() {
-            return Some(info.hwndFocus);
-        }
-        if !info.hwndCaret.0.is_null() {
-            return Some(info.hwndCaret);
-        }
-    }
-
-    Some(top)
-}
-
-#[cfg(target_os = "windows")]
-fn is_cursor_window(target_window: Option<isize>) -> bool {
-    let Some(raw) = target_window.or_else(capture_foreground_window_handle) else {
-        return false;
-    };
-
-    let process_name = window_process_name(raw);
-    if let Some(name) = &process_name {
-        eprintln!("[PASTE] target process: {name}");
-    }
-
-    process_name
-        .map(|name| name.eq_ignore_ascii_case("cursor.exe"))
-        .unwrap_or(false)
-}
-
-#[cfg(target_os = "windows")]
-fn window_process_name(hwnd_raw: isize) -> Option<String> {
-    use windows::core::PWSTR;
-    use windows::Win32::Foundation::{CloseHandle, HWND};
-    use windows::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
-        PROCESS_QUERY_LIMITED_INFORMATION,
-    };
-
-    let hwnd = HWND(hwnd_raw as *mut core::ffi::c_void);
-    let mut process_id: u32 = 0;
-    unsafe {
-        let _ = GetWindowThreadProcessId(hwnd, Some(&mut process_id));
-    }
-    if process_id == 0 {
-        return None;
-    }
-
-    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id).ok()? };
-
-    let mut buffer = vec![0u16; 4096];
-    let mut length = buffer.len() as u32;
-    let query_result = unsafe {
-        QueryFullProcessImageNameW(
-            process,
-            PROCESS_NAME_WIN32,
-            PWSTR(buffer.as_mut_ptr()),
-            &mut length,
-        )
-    };
-    let _ = unsafe { CloseHandle(process) };
-
-    if query_result.is_err() || length == 0 {
-        return None;
-    }
-
-    let full_path = String::from_utf16_lossy(&buffer[..length as usize]);
-    let file_name = full_path
-        .rsplit('\\')
-        .next()
-        .unwrap_or(full_path.as_str())
-        .rsplit('/')
-        .next()
-        .unwrap_or(full_path.as_str());
-
-    Some(file_name.to_ascii_lowercase())
-}
-
-#[cfg(target_os = "windows")]
-fn process_integrity_pair(target_window: Option<isize>) -> Option<(u32, u32)> {
-    let self_level = current_process_integrity_level()?;
-    let target_level = target_process_integrity_level(target_window)?;
-    Some((self_level, target_level))
-}
-
-#[cfg(target_os = "windows")]
-fn current_process_integrity_level() -> Option<u32> {
-    use windows::Win32::System::Threading::GetCurrentProcess;
-
-    let process = unsafe { GetCurrentProcess() };
-    read_process_integrity_level(process)
-}
-
-#[cfg(target_os = "windows")]
-fn target_process_integrity_level(target_window: Option<isize>) -> Option<u32> {
-    use windows::Win32::Foundation::CloseHandle;
-    use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
-
-    let raw = target_window.or_else(capture_foreground_window_handle)?;
-    let hwnd = HWND(raw as *mut core::ffi::c_void);
-    let mut process_id: u32 = 0;
-    unsafe {
-        let _ = GetWindowThreadProcessId(hwnd, Some(&mut process_id));
-    }
-    if process_id == 0 {
-        return None;
-    }
-
-    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id).ok()? };
-    let level = read_process_integrity_level(process);
-    let _ = unsafe { CloseHandle(process) };
-    level
-}
-
-#[cfg(target_os = "windows")]
-fn read_process_integrity_level(process: windows::Win32::Foundation::HANDLE) -> Option<u32> {
-    use windows::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows::Win32::Security::{
-        GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, TokenIntegrityLevel,
-        TOKEN_MANDATORY_LABEL, TOKEN_QUERY,
-    };
-    use windows::Win32::System::Threading::OpenProcessToken;
-
-    let mut token = HANDLE(std::ptr::null_mut());
-    if unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut token) }.is_err() {
-        return None;
-    }
-
-    let mut return_len: u32 = 0;
-    let mut buffer = vec![0u8; 256];
-    let mut read_ok = unsafe {
-        GetTokenInformation(
-            token,
-            TokenIntegrityLevel,
-            Some(buffer.as_mut_ptr() as *mut core::ffi::c_void),
-            buffer.len() as u32,
-            &mut return_len,
-        )
-        .is_ok()
-    };
-
-    if !read_ok && return_len > buffer.len() as u32 {
-        buffer.resize(return_len as usize, 0);
-        read_ok = unsafe {
-            GetTokenInformation(
-                token,
-                TokenIntegrityLevel,
-                Some(buffer.as_mut_ptr() as *mut core::ffi::c_void),
-                buffer.len() as u32,
-                &mut return_len,
-            )
-            .is_ok()
-        };
-    }
-
-    let _ = unsafe { CloseHandle(token) };
-    if !read_ok {
-        return None;
-    }
-
-    let label = unsafe { &*(buffer.as_ptr() as *const TOKEN_MANDATORY_LABEL) };
-    let sid = label.Label.Sid;
-    if sid.0.is_null() {
-        return None;
-    }
-
-    let count_ptr = unsafe { GetSidSubAuthorityCount(sid) };
-    if count_ptr.is_null() {
-        return None;
-    }
-
-    let count = unsafe { *count_ptr } as u32;
-    if count == 0 {
-        return None;
-    }
-
-    let rid_ptr = unsafe { GetSidSubAuthority(sid, count - 1) };
-    if rid_ptr.is_null() {
-        return None;
-    }
-
-    Some(unsafe { *rid_ptr })
-}
-
-#[cfg(target_os = "windows")]
-fn integrity_level_name(level: u32) -> &'static str {
-    if level < 0x1000 {
-        "Untrusted"
-    } else if level < 0x2000 {
-        "Low"
-    } else if level < 0x3000 {
-        "Medium"
-    } else if level < 0x4000 {
-        "High"
-    } else if level < 0x5000 {
-        "System"
-    } else {
-        "Protected"
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn log_cursor_uipi_diagnostics(target_window: Option<isize>) {
-    eprintln!(
-        "[PASTE] access denied when posting message to cursor, possible privilege mismatch between quickCV and Cursor"
-    );
-
-    if let Some((self_level, target_level)) = process_integrity_pair(target_window) {
-        eprintln!(
-            "[PASTE] integrity: quickCV={}({self_level:#x}), target={}({target_level:#x})",
-            integrity_level_name(self_level),
-            integrity_level_name(target_level)
-        );
-    }
 }
 
 fn simulate_event(event: EventType) -> Result<(), String> {
@@ -1314,238 +964,6 @@ fn apply_noactivate_to_children(parent_raw: isize) {
 
 #[cfg(not(target_os = "windows"))]
 fn set_window_no_activate(_hwnd_raw: isize, _no_activate: bool) {}
-
-#[cfg(target_os = "windows")]
-fn caret_screen_position_from(hwnd_raw: Option<isize>) -> Option<(i32, i32)> {
-    let hwnd = match hwnd_raw {
-        Some(raw) => HWND(raw as *mut core::ffi::c_void),
-        None => unsafe { GetForegroundWindow() },
-    };
-    if hwnd.0.is_null() {
-        return None;
-    }
-
-    let thread_id = unsafe { GetWindowThreadProcessId(hwnd, None) };
-    if thread_id == 0 {
-        return None;
-    }
-
-    let mut info = GUITHREADINFO::default();
-    info.cbSize = std::mem::size_of::<GUITHREADINFO>() as u32;
-
-    if unsafe { GetGUIThreadInfo(thread_id, &mut info) }.is_err() {
-        return None;
-    }
-
-    if info.hwndCaret.0.is_null() {
-        return None;
-    }
-
-    let mut point = POINT {
-        x: info.rcCaret.left,
-        y: info.rcCaret.bottom,
-    };
-
-    if !unsafe { ClientToScreen(info.hwndCaret, &mut point).as_bool() } {
-        return None;
-    }
-
-    Some((point.x, point.y))
-}
-
-#[cfg(not(target_os = "windows"))]
-fn caret_screen_position_from(_hwnd_raw: Option<isize>) -> Option<(i32, i32)> {
-    None
-}
-
-#[cfg(target_os = "windows")]
-fn uia_caret_screen_position() -> Option<(i32, i32)> {
-    use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoUninitialize,
-        CLSCTX_ALL, COINIT_APARTMENTTHREADED,
-    };
-    use windows::Win32::UI::Accessibility::*;
-
-    unsafe {
-        let com_result = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-        let should_uninit = com_result.is_ok();
-        eprintln!("[UIA] CoInitializeEx: ok={}, is_err={}", should_uninit, com_result.is_err());
-
-        let result = (|| -> Option<(i32, i32)> {
-            let uia: IUIAutomation = match CoCreateInstance(&CUIAutomation, None, CLSCTX_ALL) {
-                Ok(v) => { eprintln!("[UIA] CUIAutomation created"); v }
-                Err(e) => { eprintln!("[UIA] CUIAutomation FAILED: {e}"); return None; }
-            };
-            let focused = match uia.GetFocusedElement() {
-                Ok(v) => { eprintln!("[UIA] GetFocusedElement OK"); v }
-                Err(e) => { eprintln!("[UIA] GetFocusedElement FAILED: {e}"); return None; }
-            };
-
-            // TextPattern2::GetCaretRange
-            match focused.GetCurrentPatternAs::<IUIAutomationTextPattern2>(UIA_TextPattern2Id) {
-                Ok(tp2) => {
-                    eprintln!("[UIA] TextPattern2 supported");
-                    let mut active = windows::core::BOOL::default();
-                    match tp2.GetCaretRange(&mut active) {
-                        Ok(range) => {
-                            eprintln!("[UIA] GetCaretRange OK, active={}", active.as_bool());
-                            match extract_range_position(&range) {
-                                Some(pos) => {
-                                    eprintln!("[UIA] CaretRange bounding: ({}, {})", pos.0, pos.1);
-                                    return Some(pos);
-                                }
-                                None => eprintln!("[UIA] CaretRange bounding: EMPTY"),
-                            }
-                        }
-                        Err(e) => eprintln!("[UIA] GetCaretRange FAILED: {e}"),
-                    }
-                }
-                Err(e) => eprintln!("[UIA] TextPattern2 not supported: {e}"),
-            }
-
-            // TextPattern::GetSelection
-            match focused.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId) {
-                Ok(tp) => {
-                    eprintln!("[UIA] TextPattern supported");
-                    match tp.GetSelection() {
-                        Ok(ranges) => {
-                            let len = ranges.Length().unwrap_or(0);
-                            eprintln!("[UIA] GetSelection ranges: {len}");
-                            if len > 0 {
-                                if let Ok(range) = ranges.GetElement(0) {
-                                    match extract_range_position(&range) {
-                                        Some(pos) => {
-                                            eprintln!("[UIA] Selection bounding: ({}, {})", pos.0, pos.1);
-                                            return Some(pos);
-                                        }
-                                        None => eprintln!("[UIA] Selection bounding: EMPTY"),
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => eprintln!("[UIA] GetSelection FAILED: {e}"),
-                    }
-                }
-                Err(e) => eprintln!("[UIA] TextPattern not supported: {e}"),
-            }
-
-            eprintln!("[UIA] all methods failed");
-            None
-        })();
-
-        if should_uninit {
-            CoUninitialize();
-        }
-
-        result
-    }
-}
-
-#[cfg(target_os = "windows")]
-unsafe fn extract_range_position(
-    range: &windows::Win32::UI::Accessibility::IUIAutomationTextRange,
-) -> Option<(i32, i32)> {
-    use windows::Win32::UI::Accessibility::*;
-
-    // 将 range 折叠到末端（光标通常在选区末尾），再展开一个字符取精确位置
-    if let Ok(collapsed) = range.Clone() {
-        let _ = collapsed.MoveEndpointByRange(
-            TextPatternRangeEndpoint_Start,
-            range,
-            TextPatternRangeEndpoint_End,
-        );
-        let _ = collapsed.ExpandToEnclosingUnit(TextUnit_Character);
-
-        if let Some(pos) = read_range_rect(&collapsed) {
-            eprintln!("[UIA] collapsed rect pos: ({}, {})", pos.0, pos.1);
-            return Some(pos);
-        }
-    }
-
-    // 降级：直接用原始 range
-    read_range_rect(range)
-}
-
-#[cfg(target_os = "windows")]
-unsafe fn read_range_rect(
-    range: &windows::Win32::UI::Accessibility::IUIAutomationTextRange,
-) -> Option<(i32, i32)> {
-    use windows::Win32::System::Ole::{
-        SafeArrayAccessData, SafeArrayDestroy, SafeArrayGetLBound,
-        SafeArrayGetUBound, SafeArrayUnaccessData,
-    };
-
-    let sa = range.GetBoundingRectangles().ok()?;
-    if sa.is_null() {
-        return None;
-    }
-
-    let pos = (|| -> Option<(i32, i32)> {
-        let lb = SafeArrayGetLBound(sa, 1).ok()?;
-        let ub = SafeArrayGetUBound(sa, 1).ok()?;
-        let count = (ub - lb + 1) as usize;
-        if count < 4 {
-            return None;
-        }
-
-        let mut pdata: *mut std::ffi::c_void = std::ptr::null_mut();
-        SafeArrayAccessData(sa, &mut pdata).ok()?;
-        let data = std::slice::from_raw_parts(pdata as *const f64, count);
-        eprintln!("[UIA] raw rect: x={}, y={}, w={}, h={}", data[0], data[1], data[2], data[3]);
-        let x = data[0] as i32;
-        let y = (data[1] + data[3]) as i32;
-        let _ = SafeArrayUnaccessData(sa);
-        Some((x, y))
-    })();
-
-    let _ = SafeArrayDestroy(sa);
-    pos
-}
-
-#[cfg(not(target_os = "windows"))]
-fn uia_caret_screen_position() -> Option<(i32, i32)> {
-    None
-}
-
-#[cfg(target_os = "windows")]
-fn imm_caret_screen_position(hwnd_raw: Option<isize>) -> Option<(i32, i32)> {
-    use windows::Win32::UI::Input::Ime::{
-        ImmGetCompositionWindow, ImmGetContext, ImmReleaseContext, COMPOSITIONFORM,
-    };
-
-    let raw = hwnd_raw?;
-    let hwnd = HWND(raw as *mut core::ffi::c_void);
-
-    unsafe {
-        let himc = ImmGetContext(hwnd);
-        if himc.0.is_null() {
-            return None;
-        }
-
-        let mut form: COMPOSITIONFORM = std::mem::zeroed();
-        let result = if ImmGetCompositionWindow(himc, &mut form).as_bool() {
-            let mut pt = POINT {
-                x: form.ptCurrentPos.x,
-                y: form.ptCurrentPos.y,
-            };
-            if ClientToScreen(hwnd, &mut pt).as_bool() {
-                Some((pt.x, pt.y))
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        let _ = ImmReleaseContext(hwnd, himc);
-        result
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn imm_caret_screen_position(_hwnd_raw: Option<isize>) -> Option<(i32, i32)> {
-    None
-}
 
 #[cfg(target_os = "windows")]
 fn cursor_screen_position() -> Option<(i32, i32)> {
