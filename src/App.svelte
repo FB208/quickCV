@@ -43,6 +43,7 @@
   const defaultSettings = (): Settings => ({
     shortcut: "Ctrl+Shift+Space",
     launchAtStartup: false,
+    launchAtStartupEffective: false,
     webdav: {
       url: "",
       username: "",
@@ -217,7 +218,10 @@
     try {
       const requestedLaunchAtStartup = settings.launchAtStartup;
       settings = await saveSettings(settings);
-      if (requestedLaunchAtStartup !== settings.launchAtStartup) {
+      if (
+        requestedLaunchAtStartup !== settings.launchAtStartup ||
+        settings.launchAtStartup !== settings.launchAtStartupEffective
+      ) {
         setNotice("info", "设置已保存，但开机启动状态更新失败，请查看日志");
         return;
       }

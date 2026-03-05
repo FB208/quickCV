@@ -8,46 +8,15 @@ use tauri_plugin_global_shortcut::GlobalShortcutExt as _;
 pub fn load_settings(app: &AppHandle) -> Result<Settings, String> {
     logger::info(app, "settings", "load_settings command start");
     let mut settings = storage::load_settings(app)?;
-    if let Ok(enabled) = app.autolaunch().is_enabled() {
-        settings.launch_at_startup = enabled;
-    }
+    settings.launch_at_startup_effective = reconcile_autostart(app, settings.launch_at_startup);
     logger::info(app, "settings", "load_settings command success");
     Ok(settings)
 }
 
 pub fn save_settings(app: &AppHandle, settings: Settings) -> Result<Settings, String> {
     logger::info(app, "settings", "save_settings command start");
-    let mut to_save = settings.clone();
-
-    let current_autostart = app.autolaunch().is_enabled().ok();
-    let should_update_autostart = current_autostart
-        .map(|enabled| enabled != settings.launch_at_startup)
-        .unwrap_or(true);
-
-    if should_update_autostart {
-        let apply = if settings.launch_at_startup {
-            app.autolaunch().enable()
-        } else {
-            app.autolaunch().disable()
-        };
-
-        if let Err(error) = apply {
-            let action = if settings.launch_at_startup {
-                "启用"
-            } else {
-                "关闭"
-            };
-            logger::warn(
-                app,
-                "settings",
-                &format!("{action}开机启动失败，已继续保存其它设置: {error}"),
-            );
-
-            if let Ok(enabled) = app.autolaunch().is_enabled() {
-                to_save.launch_at_startup = enabled;
-            }
-        }
-    }
+    let mut to_save = settings;
+    to_save.launch_at_startup_effective = false;
 
     storage::save_settings(app, &to_save).map_err(|error| {
         logger::error(app, "settings", &format!("保存设置文件失败: {error}"));
@@ -63,12 +32,54 @@ pub fn save_settings(app: &AppHandle, settings: Settings) -> Result<Settings, St
         error
     })?;
 
-    if let Ok(enabled) = app.autolaunch().is_enabled() {
-        loaded.launch_at_startup = enabled;
+    loaded.launch_at_startup_effective = reconcile_autostart(app, loaded.launch_at_startup);
+    if loaded.launch_at_startup_effective != loaded.launch_at_startup {
+        logger::warn(
+            app,
+            "settings",
+            "开机启动期望状态与系统实际状态不一致，请检查系统权限或安全软件",
+        );
     }
 
     logger::info(app, "settings", "save_settings command success");
     Ok(loaded)
+}
+
+fn reconcile_autostart(app: &AppHandle, desired: bool) -> bool {
+    let current = match app.autolaunch().is_enabled() {
+        Ok(enabled) => enabled,
+        Err(error) => {
+            logger::warn(app, "settings", &format!("读取开机启动状态失败: {error}"));
+            return false;
+        }
+    };
+
+    if current == desired {
+        return current;
+    }
+
+    let action = if desired { "启用" } else { "关闭" };
+    let apply_result = if desired {
+        app.autolaunch().enable()
+    } else {
+        app.autolaunch().disable()
+    };
+
+    if let Err(error) = apply_result {
+        logger::warn(
+            app,
+            "settings",
+            &format!("{action}开机启动失败，可能被系统策略拦截: {error}"),
+        );
+    }
+
+    match app.autolaunch().is_enabled() {
+        Ok(enabled) => enabled,
+        Err(error) => {
+            logger::warn(app, "settings", &format!("回读开机启动状态失败: {error}"));
+            current
+        }
+    }
 }
 
 pub fn register_main_shortcut(app: &AppHandle, shortcut: &str) -> Result<(), String> {

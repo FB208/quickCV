@@ -8,6 +8,7 @@ export interface WebDavSettings {
 export interface Settings {
   shortcut: string;
   launchAtStartup: boolean;
+  launchAtStartupEffective: boolean;
   webdav: WebDavSettings;
   lastSyncedVersion: number;
   deviceId: string;

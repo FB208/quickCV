@@ -45,6 +45,9 @@
         <div class="startup-text">
           <strong>开机自动启动</strong>
           <small>启动后自动在系统托盘待命</small>
+          {#if settings.launchAtStartup !== settings.launchAtStartupEffective}
+            <small class="startup-warning">系统当前状态未生效，请保存后重试</small>
+          {/if}
         </div>
         <label class="switch" title="开机自动启动">
           <input
@@ -168,6 +171,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .startup-text .startup-warning {
+    color: #b24f2e;
   }
 
   .switch {

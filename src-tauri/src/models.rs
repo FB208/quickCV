@@ -27,6 +27,7 @@ impl Default for WebDavSettings {
 pub struct Settings {
     pub shortcut: String,
     pub launch_at_startup: bool,
+    pub launch_at_startup_effective: bool,
     pub webdav: WebDavSettings,
     pub last_synced_version: i64,
     pub device_id: String,
@@ -37,6 +38,7 @@ impl Default for Settings {
         Self {
             shortcut: "Ctrl+Shift+Space".to_string(),
             launch_at_startup: false,
+            launch_at_startup_effective: false,
             webdav: WebDavSettings::default(),
             last_synced_version: 0,
             device_id: String::new(),
