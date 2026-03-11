@@ -12,6 +12,7 @@
     setOverlayDragging
   } from "./lib/api";
   import { asErrorMessage } from "./lib/errors";
+  import { sortFolders, sortTemplates } from "./lib/templateOrder";
   import type { OverlayContext, TemplateItem, TemplateStore } from "./lib/types";
 
   type FocusPane = "folders" | "templates";
@@ -41,8 +42,8 @@
   const CONTEXT_MENU_HEIGHT = 94;
 
   $: keyword = query.trim().toLowerCase();
-  $: activeFolders = store.folders.filter((item) => item.deletedAt === null);
-  $: activeTemplates = store.templates.filter((item) => item.deletedAt === null);
+  $: activeFolders = sortFolders(store.folders.filter((item) => item.deletedAt === null));
+  $: activeTemplates = sortTemplates(store.templates.filter((item) => item.deletedAt === null));
 
   $: filteredFolders = activeFolders.filter((folder) => {
     if (!keyword) {
@@ -65,7 +66,7 @@
     selectedFolderId = filteredFolders[0]?.id || "";
   }
 
-  $: templatesInFolder = activeTemplates.filter((item) => item.folderId === selectedFolderId);
+  $: templatesInFolder = sortTemplates(activeTemplates.filter((item) => item.folderId === selectedFolderId));
 
   $: filteredTemplates = templatesInFolder.filter((item) => {
     if (!keyword) {

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
+  import type { DropPosition } from "../lib/templateOrder";
   import type { Folder, Settings, TemplateItem, TemplateStore } from "../lib/types";
 
   export let busy = false;
@@ -19,6 +21,7 @@
   export let onCreateFolder: (name: string) => void;
   export let onRenameFolder: (folderId: string) => void;
   export let onRemoveFolder: (folderId: string) => void;
+  export let onReorderFolders: (sourceId: string, targetId: string, position: DropPosition) => void;
   export let onRunSync: (mode: "pull" | "push") => void;
   export let onSelectFolder: (folderId: string) => void;
   export let onFolderSearchChange: (value: string) => void;
@@ -26,11 +29,31 @@
   export let onCreateTemplate: () => void;
   export let onSelectTemplate: (templateId: string) => void;
   export let onRemoveTemplate: (templateId: string) => void;
+  export let onReorderTemplates: (sourceId: string, targetId: string, position: DropPosition) => void;
   export let onCloseTemplateEditor: () => void;
   export let onUpdateTemplateDraft: (patch: Partial<TemplateItem>) => void;
   export let onSaveTemplateDraft: () => void;
 
   $: selectedFolderName = activeFolders.find((item) => item.id === selectedFolderId)?.name || "模板";
+  $: folderDragEnabled = !busy && !folderSearch.trim();
+  $: templateDragEnabled = !busy && !templateSearch.trim() && !!selectedFolderId;
+
+  type DropState = {
+    id: string;
+    position: DropPosition;
+  } | null;
+
+  type ActiveDrag = {
+    kind: "folder" | "template";
+    id: string;
+  } | null;
+
+  let activeDrag: ActiveDrag = null;
+  let folderDropState: DropState = null;
+  let templateDropState: DropState = null;
+
+  $: draggingFolderId = activeDrag?.kind === "folder" ? activeDrag.id : "";
+  $: draggingTemplateId = activeDrag?.kind === "template" ? activeDrag.id : "";
 
   const asInputValue = (event: Event): string => {
     return (event.currentTarget as HTMLInputElement).value;
@@ -39,6 +62,116 @@
   const asTextareaValue = (event: Event): string => {
     return (event.currentTarget as HTMLTextAreaElement).value;
   };
+
+  const getDropPosition = (element: HTMLElement, clientY: number): DropPosition => {
+    const rect = element.getBoundingClientRect();
+    return clientY < rect.top + rect.height / 2 ? "before" : "after";
+  };
+
+  const getDropTarget = (event: PointerEvent, kind: "folder" | "template"): DropState => {
+    const selector = kind === "folder" ? "[data-folder-id]" : "[data-template-id]";
+    const element = document.elementFromPoint(event.clientX, event.clientY)?.closest(selector) as HTMLElement | null;
+    if (!element) {
+      return null;
+    }
+
+    const id = kind === "folder" ? element.dataset.folderId : element.dataset.templateId;
+    if (!id || activeDrag?.id === id) {
+      return null;
+    }
+
+    return {
+      id,
+      position: getDropPosition(element, event.clientY)
+    };
+  };
+
+  const removeGlobalDragListeners = (): void => {
+    window.removeEventListener("pointermove", handleGlobalPointerMove, true);
+    window.removeEventListener("pointerup", handleGlobalPointerUp, true);
+    window.removeEventListener("pointercancel", cancelActiveDrag, true);
+    document.body.classList.remove("qc-sorting-active");
+  };
+
+  const resetDragState = (): void => {
+    activeDrag = null;
+    folderDropState = null;
+    templateDropState = null;
+    removeGlobalDragListeners();
+  };
+
+  const handleGlobalPointerMove = (event: PointerEvent): void => {
+    if (!activeDrag) {
+      return;
+    }
+
+    event.preventDefault();
+    if (activeDrag.kind === "folder") {
+      folderDropState = getDropTarget(event, "folder");
+      return;
+    }
+
+    templateDropState = getDropTarget(event, "template");
+  };
+
+  const handleGlobalPointerUp = (event: PointerEvent): void => {
+    if (!activeDrag) {
+      return;
+    }
+
+    event.preventDefault();
+    const currentDrag = activeDrag;
+    const dropState = currentDrag.kind === "folder" ? folderDropState : templateDropState;
+    resetDragState();
+
+    if (!dropState || dropState.id === currentDrag.id) {
+      return;
+    }
+
+    if (currentDrag.kind === "folder") {
+      onReorderFolders(currentDrag.id, dropState.id, dropState.position);
+      return;
+    }
+
+    onReorderTemplates(currentDrag.id, dropState.id, dropState.position);
+  };
+
+  const cancelActiveDrag = (): void => {
+    if (!activeDrag) {
+      return;
+    }
+    resetDragState();
+  };
+
+  const startDrag = (event: PointerEvent, kind: "folder" | "template", id: string): void => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    resetDragState();
+    activeDrag = { kind, id };
+    document.body.classList.add("qc-sorting-active");
+    window.addEventListener("pointermove", handleGlobalPointerMove, true);
+    window.addEventListener("pointerup", handleGlobalPointerUp, true);
+    window.addEventListener("pointercancel", cancelActiveDrag, true);
+  };
+
+  const startFolderDrag = (event: PointerEvent, folderId: string): void => {
+    if (!folderDragEnabled) {
+      return;
+    }
+    startDrag(event, "folder", folderId);
+  };
+
+  const startTemplateDrag = (event: PointerEvent, templateId: string): void => {
+    if (!templateDragEnabled) {
+      return;
+    }
+    startDrag(event, "template", templateId);
+  };
+
+  onDestroy(() => {
+    removeGlobalDragListeners();
+  });
 </script>
 
 <section class="qc-panel tpl-panel">
@@ -70,9 +203,12 @@
   <div class="tpl-body">
     <aside class="tpl-sidebar">
       <div class="tpl-sidebar-header">
-        <h3>
-          <span class="ms-icon">folder</span> 文件夹
-        </h3>
+        <div>
+          <h3>
+            <span class="ms-icon">folder</span> 文件夹
+          </h3>
+          <p class="tpl-sort-note">{folderDragEnabled ? "可拖动排序" : "清空搜索后可拖动排序"}</p>
+        </div>
         <button class="qc-icon-btn tpl-add-btn" title="新建文件夹" disabled={busy} on:click={() => onCreateFolder("新文件夹")}>
           <span class="ms-icon">add</span>
         </button>
@@ -91,20 +227,33 @@
         {#each filteredFolders as folder}
           <div
             class="tpl-folder-item"
+            data-folder-id={folder.id}
             class:active={folder.id === selectedFolderId}
+            class:dragging={draggingFolderId === folder.id}
+            class:drop-before={folderDropState?.id === folder.id && folderDropState?.position === "before"}
+            class:drop-after={folderDropState?.id === folder.id && folderDropState?.position === "after"}
             on:click={() => onSelectFolder(folder.id)}
             on:keydown={(event) => event.key === "Enter" && onSelectFolder(folder.id)}
             role="button"
             tabindex="0"
           >
+            <button
+              type="button"
+              class="qc-icon-btn tpl-drag-handle-btn"
+              title={folderDragEnabled ? "拖动排序" : "清空搜索后可拖动排序"}
+              on:pointerdown={(event) => startFolderDrag(event, folder.id)}
+              on:click|preventDefault|stopPropagation={() => undefined}
+            >
+              <span class="ms-icon tpl-drag-handle">drag_indicator</span>
+            </button>
             <span class="ms-icon tpl-folder-icon">{folder.id === selectedFolderId ? "folder_open" : "folder"}</span>
             <span class="tpl-folder-name">{folder.name}</span>
             <span class="tpl-folder-count">{templateCountByFolderId[folder.id] ?? 0}</span>
             <div class="tpl-folder-actions">
-              <button class="qc-icon-btn tpl-icon-btn" title="重命名" on:click|stopPropagation={() => onRenameFolder(folder.id)}>
+              <button class="qc-icon-btn tpl-icon-btn" title="重命名" draggable={false} on:click|stopPropagation={() => onRenameFolder(folder.id)}>
                 <span class="ms-icon">edit</span>
               </button>
-              <button class="qc-icon-btn qc-icon-btn-danger tpl-icon-btn danger" title="删除" on:click|stopPropagation={() => onRemoveFolder(folder.id)}>
+              <button class="qc-icon-btn qc-icon-btn-danger tpl-icon-btn danger" title="删除" draggable={false} on:click|stopPropagation={() => onRemoveFolder(folder.id)}>
                 <span class="ms-icon">delete</span>
               </button>
             </div>
@@ -146,36 +295,61 @@
       </div>
 
       <div class="tpl-content-area" class:has-editor={templateDraft !== null}>
-        <div class="tpl-card-grid">
+        <div class="tpl-template-panel">
+          <div class="tpl-list-status">
+            <span class="ms-icon">reorder</span>
+            <span>{templateDragEnabled ? "单列列表，可拖动排序" : "清空搜索后可拖动排序"}</span>
+          </div>
+
+          <div class="tpl-template-list">
           {#each filteredTemplates as item}
             <div
-              class="tpl-card"
+              class="tpl-template-row"
+              data-template-id={item.id}
               class:selected={item.id === selectedTemplateId}
+              class:dragging={draggingTemplateId === item.id}
+              class:drop-before={templateDropState?.id === item.id && templateDropState?.position === "before"}
+              class:drop-after={templateDropState?.id === item.id && templateDropState?.position === "after"}
               on:click={() => onSelectTemplate(item.id)}
               on:keydown={(event) => event.key === "Enter" && onSelectTemplate(item.id)}
               role="button"
               tabindex="0"
             >
-              <div class="tpl-card-header">
-                <span class="tpl-card-name">{item.name}</span>
-                <button class="qc-icon-btn qc-icon-btn-danger qc-icon-btn-sm tpl-icon-btn danger sm" title="删除" on:click|stopPropagation={() => onRemoveTemplate(item.id)}>
+              <div class="tpl-template-row-head">
+                <button
+                  type="button"
+                  class="qc-icon-btn tpl-drag-handle-btn"
+                  title={templateDragEnabled ? "拖动排序" : "清空搜索后可拖动排序"}
+                  on:pointerdown={(event) => startTemplateDrag(event, item.id)}
+                  on:click|preventDefault|stopPropagation={() => undefined}
+                >
+                  <span class="ms-icon tpl-drag-handle">drag_indicator</span>
+                </button>
+                <div class="tpl-template-texts">
+                  <div class="tpl-template-title-line">
+                    <span class="tpl-template-name">{item.name}</span>
+                    {#if item.key}
+                      <div class="tpl-template-key">
+                      <span class="ms-icon">key</span>
+                      <span>{item.key}</span>
+                      </div>
+                    {/if}
+                  </div>
+                </div>
+                <button class="qc-icon-btn qc-icon-btn-danger qc-icon-btn-sm tpl-icon-btn danger sm" title="删除" draggable={false} on:click|stopPropagation={() => onRemoveTemplate(item.id)}>
                   <span class="ms-icon">close</span>
                 </button>
               </div>
-              {#if item.key}
-                <div class="tpl-card-key">
-                  <span class="ms-icon">key</span> {item.key}
-                </div>
-              {/if}
-              <div class="tpl-card-preview">{item.content || "（空内容）"}</div>
+              <div class="tpl-template-preview">{item.content || "（空内容）"}</div>
             </div>
           {/each}
           {#if filteredTemplates.length === 0}
-            <div class="tpl-empty-card">
+            <div class="tpl-empty-card tpl-empty-list">
               <span class="ms-icon">note_add</span>
               <p>{selectedFolderId ? "暂无模板，点击上方按钮创建" : "请先选择一个文件夹"}</p>
             </div>
           {/if}
+          </div>
         </div>
 
         {#if templateDraft}
@@ -309,7 +483,7 @@
 
   .tpl-body {
     display: grid;
-    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-columns: 272px minmax(0, 1fr);
     flex: 1;
     min-height: 0;
   }
@@ -324,7 +498,7 @@
 
   .tpl-sidebar-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     padding: 10px 12px 6px;
     flex-shrink: 0;
@@ -337,6 +511,12 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
+  }
+
+  .tpl-sort-note {
+    margin: 4px 0 0;
+    font-size: 11px;
+    color: #7a95af;
   }
 
   .tpl-search-wrap {
@@ -379,8 +559,11 @@
     padding: 7px 10px;
     border-radius: 9px;
     cursor: pointer;
-    margin-bottom: 2px;
+    margin-bottom: 4px;
     border: 1px solid transparent;
+    background: rgba(255, 255, 255, 0.74);
+    position: relative;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
   }
 
   .tpl-folder-item.active {
@@ -412,6 +595,43 @@
 
   .tpl-add-btn {
     border-style: dashed;
+  }
+
+  .tpl-drag-handle {
+    color: #89a2ba;
+    cursor: grab;
+    flex-shrink: 0;
+  }
+
+  .tpl-drag-handle-btn {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border-radius: 6px;
+    touch-action: none;
+    flex-shrink: 0;
+  }
+
+  .tpl-drag-handle-btn:hover .tpl-drag-handle {
+    color: #5f84a5;
+  }
+
+  .tpl-folder-item.dragging,
+  .tpl-template-row.dragging {
+    opacity: 0.58;
+  }
+
+  :global(body.qc-sorting-active) {
+    user-select: none;
+    cursor: grabbing;
+  }
+
+  .tpl-folder-item.drop-before {
+    box-shadow: inset 0 3px 0 #4a9ad4;
+  }
+
+  .tpl-folder-item.drop-after {
+    box-shadow: inset 0 -3px 0 #4a9ad4;
   }
 
   .tpl-main {
@@ -472,71 +692,163 @@
     flex: 1;
     overflow: hidden;
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     min-height: 0;
   }
 
   .tpl-content-area.has-editor {
-    grid-template-columns: 1fr 340px;
+    grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
   }
 
-  .tpl-card-grid {
+  .tpl-template-panel {
     padding: 12px 14px;
     overflow-y: auto;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    display: flex;
+    flex-direction: column;
     gap: 10px;
-    align-content: start;
+    min-width: 0;
+    width: min(100%, 320px);
   }
 
-  .tpl-card {
+  .tpl-list-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, #f5faff 0%, #edf6fd 100%);
+    border: 1px solid #d5e3f1;
+    color: #5d7f9f;
+    font-size: 11px;
+  }
+
+  .tpl-template-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+  }
+
+  .tpl-template-row {
     border: 1px solid #dde8f2;
     border-radius: 10px;
-    background: #fff;
-    padding: 10px 12px;
+    background: linear-gradient(160deg, #ffffff 0%, #f6fbff 100%);
+    padding: 8px 10px;
     cursor: pointer;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 5px;
+    position: relative;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
   }
 
-  .tpl-card.selected {
+  .tpl-template-row::before,
+  .tpl-template-row::after {
+    content: "";
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    height: 4px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #72b3df 0%, #3e92d0 100%);
+    box-shadow: 0 0 0 1px rgba(119, 177, 220, 0.25), 0 6px 16px rgba(62, 146, 208, 0.2);
+    opacity: 0;
+    transform: scaleX(0.45);
+    transition: opacity 0.16s ease, transform 0.16s ease;
+    pointer-events: none;
+  }
+
+  .tpl-template-row::before {
+    top: -3px;
+    transform-origin: left center;
+  }
+
+  .tpl-template-row::after {
+    bottom: -3px;
+    transform-origin: right center;
+  }
+
+  .tpl-template-row.drop-before::before,
+  .tpl-template-row.drop-after::after {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+
+  .tpl-template-row.drop-before,
+  .tpl-template-row.drop-after {
+    border-color: #9cc8e8;
+  }
+
+  .tpl-template-row:hover {
+    border-color: #bdd5e8;
+    transform: translateY(-1px);
+  }
+
+  .tpl-template-row.selected {
     border-color: #6aafe0;
     background: linear-gradient(160deg, #f4faff 0%, #eaf4fb 100%);
+    box-shadow: 0 10px 24px rgba(77, 135, 181, 0.12);
   }
 
-  .tpl-card-header {
+  .tpl-template-row.selected.drop-before,
+  .tpl-template-row.selected.drop-after {
+    box-shadow: 0 10px 24px rgba(77, 135, 181, 0.12), 0 0 0 1px rgba(114, 179, 223, 0.28);
+  }
+
+  .tpl-template-row-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 6px;
   }
 
-  .tpl-card-name {
+  .tpl-template-texts {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .tpl-template-title-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .tpl-template-name {
+    flex: 1;
     font-size: 13px;
     font-weight: 600;
     color: #1d3a58;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    flex: 1;
   }
 
-  .tpl-card-key {
+  .tpl-template-key {
     font-size: 10px;
-    color: #6a8ea8;
+    color: #5d809d;
     background: #eef5fb;
-    border-radius: 4px;
-    padding: 1px 6px;
+    border-radius: 999px;
+    padding: 1px 7px;
     width: fit-content;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
   }
 
-  .tpl-card-preview {
+  .tpl-template-key .ms-icon {
+    font-size: 12px;
+  }
+
+  .tpl-template-preview {
     font-size: 11px;
     color: #7a96b0;
-    line-height: 1.5;
-    max-height: 48px;
+    line-height: 1.45;
+    min-width: 0;
     overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 
   .tpl-editor {
@@ -580,12 +892,14 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+    min-height: 0;
   }
 
   .tpl-field {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    min-height: 0;
   }
 
   .tpl-field-label {
@@ -602,6 +916,7 @@
 
   .tpl-field-grow {
     flex: 1;
+    min-height: 0;
   }
 
   .tpl-input {
@@ -609,7 +924,9 @@
   }
 
   .tpl-textarea {
-    min-height: 80px;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
     resize: none;
     line-height: 1.6;
   }
@@ -644,6 +961,10 @@
     padding: 24px 12px;
   }
 
+  .tpl-empty-list {
+    min-height: 180px;
+  }
+
   .tpl-empty-card p {
     margin: 0;
     font-size: 12px;
@@ -670,8 +991,14 @@
       max-height: 200px;
     }
 
+    .tpl-content-area,
     .tpl-content-area.has-editor {
       grid-template-columns: 1fr;
+    }
+
+    .tpl-editor {
+      border-left: none;
+      border-top: 1px solid #dde8f2;
     }
   }
 </style>

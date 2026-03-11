@@ -1,5 +1,13 @@
 use serde::{Deserialize, Serialize};
 
+fn default_sort_order() -> i64 {
+    0
+}
+
+fn default_sort_updated_at() -> i64 {
+    0
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
@@ -51,6 +59,10 @@ impl Default for Settings {
 pub struct Folder {
     pub id: String,
     pub name: String,
+    #[serde(default = "default_sort_order")]
+    pub sort_order: i64,
+    #[serde(default = "default_sort_updated_at")]
+    pub sort_updated_at: i64,
     pub updated_at: i64,
     pub deleted_at: Option<i64>,
     pub device_id: String,
@@ -64,6 +76,10 @@ pub struct TemplateItem {
     pub name: String,
     pub key: Option<String>,
     pub content: String,
+    #[serde(default = "default_sort_order")]
+    pub sort_order: i64,
+    #[serde(default = "default_sort_updated_at")]
+    pub sort_updated_at: i64,
     pub updated_at: i64,
     pub deleted_at: Option<i64>,
     pub device_id: String,

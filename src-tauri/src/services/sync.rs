@@ -84,8 +84,9 @@ pub async fn sync_pull(app: &AppHandle) -> Result<SyncResult, String> {
     storage::save_settings(app, &settings)?;
 
     let merged_after = active_counts(&merged);
-    let changed =
-        local_before != merged_after || !report.conflict_copies.is_empty() || !report.key_conflicts.is_empty();
+    let changed = local_before != merged_after
+        || !report.conflict_copies.is_empty()
+        || !report.key_conflicts.is_empty();
     let message = if changed {
         let mut base = format!(
             "已从云端拉取并自动合并（文件夹 {}→{}，模板 {}→{}）",
@@ -228,6 +229,8 @@ fn stores_equal_content(left: &TemplateStore, right: &TemplateStore) -> bool {
 fn folder_equal(left: &Folder, right: &Folder) -> bool {
     left.id == right.id
         && left.name == right.name
+        && left.sort_order == right.sort_order
+        && left.sort_updated_at == right.sort_updated_at
         && left.updated_at == right.updated_at
         && left.deleted_at == right.deleted_at
         && left.device_id == right.device_id
@@ -239,6 +242,8 @@ fn template_equal(left: &TemplateItem, right: &TemplateItem) -> bool {
         && left.name == right.name
         && left.key == right.key
         && left.content == right.content
+        && left.sort_order == right.sort_order
+        && left.sort_updated_at == right.sort_updated_at
         && left.updated_at == right.updated_at
         && left.deleted_at == right.deleted_at
         && left.device_id == right.device_id

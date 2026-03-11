@@ -17,6 +17,14 @@
   } from "./lib/api";
   import { asErrorMessage } from "./lib/errors";
   import { formatHotkey } from "./lib/hotkey";
+  import {
+    SORT_GAP,
+    moveIds,
+    nextSortOrder,
+    sortFolders,
+    sortTemplates,
+    type DropPosition
+  } from "./lib/templateOrder";
   import GeneralTab from "./components/GeneralTab.svelte";
   import SystemTab from "./components/SystemTab.svelte";
   import TemplatesTab from "./components/TemplatesTab.svelte";
@@ -87,7 +95,7 @@
 
   let updateBanner: ReleaseCheckResult | null = null;
 
-  $: activeFolders = store.folders.filter((item) => item.deletedAt === null);
+  $: activeFolders = sortFolders(store.folders.filter((item) => item.deletedAt === null));
   $: if (!selectedFolderId || !activeFolders.some((item) => item.id === selectedFolderId)) {
     selectedFolderId = activeFolders[0]?.id || "";
   }
@@ -99,8 +107,8 @@
     return item.name.toLowerCase().includes(folderSearch.trim().toLowerCase());
   });
 
-  $: activeTemplates = store.templates.filter(
-    (item) => item.deletedAt === null && item.folderId === selectedFolderId
+  $: activeTemplates = sortTemplates(
+    store.templates.filter((item) => item.deletedAt === null && item.folderId === selectedFolderId)
   );
 
   $: templateCountByFolderId = store.templates.reduce<Record<string, number>>((acc, item) => {
@@ -256,6 +264,8 @@
     const folder: Folder = {
       id: newId(),
       name,
+      sortOrder: nextSortOrder(activeFolders),
+      sortUpdatedAt: now(),
       updatedAt: now(),
       deletedAt: null,
       deviceId: settings.deviceId || "desktop"
@@ -334,6 +344,8 @@
       name,
       key: null,
       content: "",
+      sortOrder: nextSortOrder(activeTemplates),
+      sortUpdatedAt: now(),
       updatedAt: now(),
       deletedAt: null,
       deviceId: settings.deviceId || "desktop"
@@ -399,6 +411,107 @@
     store = { ...store, templates: [...store.templates] };
     templateDraft = { ...target };
     await persistStore("模板已保存");
+  };
+
+  const reorderFolders = async (
+    sourceId: string,
+    targetId: string,
+    position: DropPosition,
+  ): Promise<void> => {
+    const nextIds = moveIds(
+      activeFolders.map((item) => item.id),
+      sourceId,
+      targetId,
+      position,
+    );
+
+    if (nextIds.every((id, index) => id === activeFolders[index]?.id)) {
+      return;
+    }
+
+    const timestamp = now();
+    const sortOrderById = new Map(nextIds.map((id, index) => [id, (index + 1) * SORT_GAP]));
+
+    store = {
+      ...store,
+      folders: store.folders.map((item) => {
+        const nextOrder = item.deletedAt === null ? sortOrderById.get(item.id) : undefined;
+        if (nextOrder === undefined) {
+          return item;
+        }
+        return {
+          ...item,
+          sortOrder: nextOrder,
+          sortUpdatedAt: timestamp,
+          deviceId: settings.deviceId || item.deviceId
+        };
+      })
+    };
+
+    await persistStore("文件夹顺序已更新");
+  };
+
+  const reorderTemplates = async (
+    sourceId: string,
+    targetId: string,
+    position: DropPosition,
+  ): Promise<void> => {
+    if (!selectedFolderId) {
+      return;
+    }
+
+    const nextIds = moveIds(
+      activeTemplates.map((item) => item.id),
+      sourceId,
+      targetId,
+      position,
+    );
+
+    if (nextIds.every((id, index) => id === activeTemplates[index]?.id)) {
+      return;
+    }
+
+    const timestamp = now();
+    const sortOrderById = new Map(nextIds.map((id, index) => [id, (index + 1) * SORT_GAP]));
+
+    store = {
+      ...store,
+      templates: store.templates.map((item) => {
+        if (item.deletedAt !== null || item.folderId !== selectedFolderId) {
+          return item;
+        }
+
+        const nextOrder = sortOrderById.get(item.id);
+        if (nextOrder === undefined) {
+          return item;
+        }
+
+        return {
+          ...item,
+          sortOrder: nextOrder,
+          sortUpdatedAt: timestamp,
+          deviceId: settings.deviceId || item.deviceId
+        };
+      })
+    };
+
+    await persistStore("模板顺序已更新");
+  };
+
+  const handleReorderFolders = (
+    sourceId: string,
+    targetId: string,
+    position: DropPosition,
+  ): void => {
+    void reorderFolders(sourceId, targetId, position);
+  };
+
+  const handleReorderTemplates = (
+    sourceId: string,
+    targetId: string,
+    position: DropPosition,
+  ): void => {
+    void reorderTemplates(sourceId, targetId, position);
   };
 
   const runWebDavTest = async (): Promise<void> => {
@@ -628,6 +741,7 @@
           onCreateFolder={(name) => void createFolder(name)}
           onRenameFolder={(folderId) => void renameFolder(folderId)}
           onRemoveFolder={(folderId) => void removeFolder(folderId)}
+          onReorderFolders={handleReorderFolders}
           onRunSync={(mode) => void runSync(mode)}
           onSelectFolder={(folderId) => (selectedFolderId = folderId)}
           onFolderSearchChange={(value) => (folderSearch = value)}
@@ -635,6 +749,7 @@
           onCreateTemplate={() => void createTemplate()}
           onSelectTemplate={(templateId) => (selectedTemplateId = templateId)}
           onRemoveTemplate={(templateId) => void removeTemplate(templateId)}
+          onReorderTemplates={handleReorderTemplates}
           onCloseTemplateEditor={() => {
             selectedTemplateId = "";
             templateDraft = null;

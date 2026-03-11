@@ -17,6 +17,8 @@ export interface Settings {
 export interface Folder {
   id: string;
   name: string;
+  sortOrder: number;
+  sortUpdatedAt: number;
   updatedAt: number;
   deletedAt: number | null;
   deviceId: string;
@@ -28,6 +30,8 @@ export interface TemplateItem {
   name: string;
   key: string | null;
   content: string;
+  sortOrder: number;
+  sortUpdatedAt: number;
   updatedAt: number;
   deletedAt: number | null;
   deviceId: string;
