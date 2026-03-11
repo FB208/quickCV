@@ -60,6 +60,7 @@ npm run tauri build
 - 产物发布到 GitHub Releases，并生成 `latest.json` 供软件内更新使用
 - 需要配置 GitHub Secret：`TAURI_SIGNING_PRIVATE_KEY`
 - 当前工作流按“无密码私钥”设计，不需要也不要配置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+- 工作流会显式传入空字符串 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""`，用于兼容这类“无密码生成但仍需空密码解锁”的 updater 私钥
 - `TAURI_SIGNING_PRIVATE_KEY` 应填写私钥文件内容本身，不是 `.pub`，也不是文件路径
 - 首个支持软件内更新的版本属于桥接版，老用户仍需手动安装一次；此后即可在软件内更新
 
