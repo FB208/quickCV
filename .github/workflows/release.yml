@@ -65,18 +65,14 @@ jobs:
             throw "缺少 GitHub Secret: TAURI_SIGNING_PRIVATE_KEY"
           }
 
-          @"
-          TAURI_SIGNING_PRIVATE_KEY<<EOF
-          $env:RAW_TAURI_SIGNING_PRIVATE_KEY
-          EOF
-          "@ | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Add-Content -Path $env:GITHUB_ENV -Value "TAURI_SIGNING_PRIVATE_KEY<<EOF"
+          Add-Content -Path $env:GITHUB_ENV -Value $env:RAW_TAURI_SIGNING_PRIVATE_KEY
+          Add-Content -Path $env:GITHUB_ENV -Value "EOF"
 
           if (-not [string]::IsNullOrWhiteSpace($env:RAW_TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
-            @"
-            TAURI_SIGNING_PRIVATE_KEY_PASSWORD<<EOF
-            $env:RAW_TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-            EOF
-            "@ | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            Add-Content -Path $env:GITHUB_ENV -Value "TAURI_SIGNING_PRIVATE_KEY_PASSWORD<<EOF"
+            Add-Content -Path $env:GITHUB_ENV -Value $env:RAW_TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+            Add-Content -Path $env:GITHUB_ENV -Value "EOF"
           }
 
       - name: Build and publish release
