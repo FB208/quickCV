@@ -13,7 +13,7 @@ quickCV 是一个面向中文场景的轻量级模板插入管理工具，当前
 - 关闭主窗口后最小化到托盘（隐藏窗口）
 - 浮窗通过全局快捷键触发
 - 无边框浮窗模板选择（搜索、上下选择、左右切换、回车插入、Esc 取消）
-- 启动自动检查新版本，可手动跳转 GitHub Release 下载更新
+- 生产环境启动后静默检查新版本，支持软件内下载并安装更新
 - 剪贴板恢复增强（文本 / HTML / 图片 / 文件列表备份恢复）
 - GitHub Actions tag 自动打包发布工作流
 
@@ -43,15 +43,23 @@ npm run dev
 npm run tauri build
 ```
 
-- 本地打包默认不生成 updater 产物（无需签名私钥）。
+- 本地打包已启用 updater 产物生成；若要实际生成可安装更新包签名，请在环境变量中提供签名私钥。
 - 构建结果位于 `src-tauri/target/release/bundle/`。
+
+PowerShell 示例：
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY_PATH="$env:USERPROFILE\.tauri\quickcv-updater.key"
+npm run tauri build
+```
 
 ## 自动发布
 
 - 工作流文件：`.github/workflows/release.yml`
 - 触发方式：推送标签（例如 `v0.1.0`）
-- 产物发布到 GitHub Releases
-- 该工作流只发布安装包，不依赖额外 Secrets/Variables
+- 产物发布到 GitHub Releases，并生成 `latest.json` 供软件内更新使用
+- 需要配置 GitHub Secrets：`TAURI_SIGNING_PRIVATE_KEY`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`（如私钥无密码可留空）
+- 首个支持软件内更新的版本属于桥接版，老用户仍需手动安装一次；此后即可在软件内更新
 
 ## 目录说明
 

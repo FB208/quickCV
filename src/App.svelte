@@ -2,13 +2,16 @@
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import {
-    checkReleaseVersion,
+    acknowledgeCurrentAppVersion,
+    checkAppUpdate,
     getAppVersion,
+    installAppUpdate,
     loadSettings,
     loadTemplateStore,
     openReleasePage,
     openConfigFolder,
     openOverlay,
+    peekAppUpdateWelcome,
     saveSettings,
     saveTemplateStore,
     syncPull,
@@ -29,8 +32,10 @@
   import SystemTab from "./components/SystemTab.svelte";
   import TemplatesTab from "./components/TemplatesTab.svelte";
   import type {
+    AppUpdateCheckResult,
+    AppUpdateProgressEvent,
+    AppUpdateWelcome,
     Folder,
-    ReleaseCheckResult,
     Settings,
     SyncResult,
     TemplateItem,
@@ -59,6 +64,8 @@
       remoteFile: "quickcv-data.json"
     },
     lastSyncedVersion: 0,
+    lastUpdateCheckAt: 0,
+    lastSeenAppVersion: "",
     deviceId: ""
   });
 
@@ -70,6 +77,7 @@
 
   let tab: TabKey = "general";
   let settings = defaultSettings();
+  let savedSettingsSnapshot = defaultSettings();
   let store = defaultStore();
   let appVersion = "--";
   let loading = true;
@@ -88,12 +96,17 @@
   let selectedFolderId = "";
   let selectedTemplateId = "";
   let templateDraft: TemplateItem | null = null;
-  let latestVersion = "--";
-  let checkingVersion = false;
   let syncMode: "pull" | "push" | null = null;
   let syncStage = "";
 
-  let updateBanner: ReleaseCheckResult | null = null;
+  let updateInfo: AppUpdateCheckResult | null = null;
+  let updateBanner: AppUpdateCheckResult | null = null;
+  let updateProgress: AppUpdateProgressEvent | null = null;
+  let updateState: "idle" | "checking" | "available" | "latest" | "downloading" | "installing" | "error" = "idle";
+  let updatePendingReady = false;
+  let updateNoticeHandled = false;
+  let recentlyUpdatedFromVersion = "";
+  const isDevBuild = import.meta.env.DEV;
 
   $: activeFolders = sortFolders(store.folders.filter((item) => item.deletedAt === null));
   $: if (!selectedFolderId || !activeFolders.some((item) => item.id === selectedFolderId)) {
@@ -134,18 +147,69 @@
     selectedTemplateId = filteredTemplates[0]?.id || "";
   }
 
+  $: selectedTemplate = store.templates.find((item) => item.id === selectedTemplateId && item.deletedAt === null) || null;
+
   $: {
-    const selected = store.templates.find((item) => item.id === selectedTemplateId && item.deletedAt === null);
-    if (selected && templateDraft?.id !== selected.id) {
-      templateDraft = { ...selected };
+    if (selectedTemplate && templateDraft?.id !== selectedTemplate.id) {
+      templateDraft = { ...selectedTemplate };
     }
-    if (!selected) {
+    if (!selectedTemplate) {
       templateDraft = null;
     }
   }
 
+  $: hasUnsavedSettings = !areSettingsEqual(settings, savedSettingsSnapshot);
+  $: hasUnsavedTemplateDraft = isTemplateDraftDirty(templateDraft, selectedTemplate);
+  $: updateBlockedReason = getUpdateBlockedReason();
+
+  const areSettingsEqual = (left: Settings, right: Settings): boolean => {
+    return JSON.stringify(left) === JSON.stringify(right);
+  };
+
+  const isTemplateDraftDirty = (
+    draft: TemplateItem | null,
+    source: TemplateItem | null,
+  ): boolean => {
+    if (!draft || !source) {
+      return false;
+    }
+
+    return (
+      draft.name !== source.name ||
+      (draft.key || "") !== (source.key || "") ||
+      draft.content !== source.content
+    );
+  };
+
+  const getUpdateBlockedReason = (): string => {
+    if (syncMode) {
+      return "正在执行 WebDAV 同步，请稍后再更新";
+    }
+    if (busy && (updateState === "downloading" || updateState === "installing")) {
+      return "更新处理中，请勿重复操作";
+    }
+    if (hasUnsavedSettings) {
+      return "请先保存常规设置后再更新";
+    }
+    if (hasUnsavedTemplateDraft) {
+      return "请先保存当前模板后再更新";
+    }
+    return "";
+  };
+
+  const syncRuntimeSettings = (nextSettings: Settings): void => {
+    settings = nextSettings;
+    savedSettingsSnapshot = { ...nextSettings };
+  };
+
+  const refreshRuntimeUpdateMetadata = (patch: Partial<Settings>): void => {
+    settings = { ...settings, ...patch };
+    savedSettingsSnapshot = { ...savedSettingsSnapshot, ...patch };
+  };
+
   onMount(() => {
     let unlistenTabNavigate: (() => void) | undefined;
+    let unlistenUpdateProgress: (() => void) | undefined;
     const keyRecorder = (event: KeyboardEvent): void => {
       if (!recordingShortcut) {
         return;
@@ -178,16 +242,50 @@
           tab = event.payload;
         }
       });
+
+      unlistenUpdateProgress = await listen<AppUpdateProgressEvent>("app_update_progress", (event) => {
+        updateProgress = event.payload;
+        if (event.payload.phase === "downloading") {
+          updateState = "downloading";
+          return;
+        }
+        if (event.payload.phase === "installing") {
+          updateState = "installing";
+          return;
+        }
+        if (event.payload.phase === "finished") {
+          updateState = "latest";
+          busy = false;
+          return;
+        }
+        if (event.payload.phase === "error") {
+          updateState = "error";
+          busy = false;
+          updatePendingReady = false;
+          setNotice("error", event.payload.message);
+        }
+      });
+    };
+
+    const handleVisibilityChange = (): void => {
+      if (document.visibilityState === "visible") {
+        void maybeShowUpdateWelcome();
+      }
     };
 
     window.addEventListener("keydown", keyRecorder, true);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     void bindTabNavigate();
     void bootstrap();
     return () => {
       if (unlistenTabNavigate) {
         unlistenTabNavigate();
       }
+      if (unlistenUpdateProgress) {
+        unlistenUpdateProgress();
+      }
       window.removeEventListener("keydown", keyRecorder, true);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   });
 
@@ -199,11 +297,24 @@
         loadTemplateStore(),
         getAppVersion()
       ]);
-      settings = loadedSettings;
+      syncRuntimeSettings(loadedSettings);
       store = loadedStore;
       appVersion = version;
-      latestVersion = version;
-      void runReleaseCheck(true);
+      updateInfo = {
+        status: "latest",
+        hasUpdate: false,
+        message: `当前版本 v${version}`,
+        currentVersion: version,
+        latestVersion: version,
+        releaseUrl: "https://github.com/FB208/quickCV/releases",
+        releaseNotes: "",
+        publishedAt: null,
+        lastCheckAt: loadedSettings.lastUpdateCheckAt || 0
+      };
+      if (!isDevBuild) {
+        void runAppUpdateCheck(true);
+      }
+      void maybeShowUpdateWelcome();
     } catch (error) {
       setNotice("error", asErrorMessage(error));
     } finally {
@@ -221,11 +332,28 @@
     notice = message;
   };
 
+  const formatBytes = (value: number): string => {
+    if (value <= 0) {
+      return "0 B";
+    }
+
+    const units = ["B", "KB", "MB", "GB"];
+    let current = value;
+    let index = 0;
+    while (current >= 1024 && index < units.length - 1) {
+      current /= 1024;
+      index += 1;
+    }
+
+    return `${current.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+  };
+
   const persistSettings = async (): Promise<void> => {
     busy = true;
     try {
       const requestedLaunchAtStartup = settings.launchAtStartup;
-      settings = await saveSettings(settings);
+      const savedSettings = await saveSettings(settings);
+      syncRuntimeSettings(savedSettings);
       if (
         requestedLaunchAtStartup !== settings.launchAtStartup ||
         settings.launchAtStartup !== settings.launchAtStartupEffective
@@ -533,7 +661,7 @@
     try {
       const result: SyncResult = mode === "pull" ? await syncPull() : await syncPush();
       syncStage = "正在刷新本地数据...";
-      settings = await loadSettings();
+      syncRuntimeSettings(await loadSettings());
       store = await loadTemplateStore();
       const noticeLevel: NoticeType = result.blocked
         ? "error"
@@ -585,17 +713,44 @@
     void action();
   };
 
-  const runReleaseCheck = async (silent: boolean): Promise<void> => {
-    if (checkingVersion) {
+  const maybeShowUpdateWelcome = async (): Promise<void> => {
+    if (updateNoticeHandled || document.visibilityState !== "visible") {
       return;
     }
 
-    checkingVersion = true;
     try {
-      const result = await checkReleaseVersion();
-      latestVersion = result.latestVersion || result.currentVersion;
+      const welcome: AppUpdateWelcome | null = await peekAppUpdateWelcome();
+      await acknowledgeCurrentAppVersion();
+      refreshRuntimeUpdateMetadata({ lastSeenAppVersion: appVersion });
+      updateNoticeHandled = true;
+
+      if (welcome) {
+        recentlyUpdatedFromVersion = welcome.previousVersion;
+        setNotice(
+          "success",
+          `已更新到 v${welcome.currentVersion}（上一版本 v${welcome.previousVersion}）`,
+        );
+      }
+    } catch {
+      // 首次启动提示失败不影响主流程
+    }
+  };
+
+  const runAppUpdateCheck = async (silent: boolean): Promise<void> => {
+    if (updateState === "checking") {
+      return;
+    }
+
+    updateState = "checking";
+    updateProgress = null;
+    try {
+      const result = await checkAppUpdate();
+      updateInfo = result;
+      refreshRuntimeUpdateMetadata({ lastUpdateCheckAt: result.lastCheckAt });
 
       if (result.status === "error") {
+        updateState = "error";
+        updatePendingReady = false;
         if (!silent) {
           setNotice("error", result.message);
         }
@@ -603,28 +758,82 @@
       }
 
       if (result.hasUpdate) {
-        if (silent) {
-          // 启动时静默检查：只显示非阻塞横幅，不弹窗、不自动打开网页
-          updateBanner = result;
-        } else {
-          // 用户手动检查：用 confirm 询问
+        updateState = "available";
+        updatePendingReady = true;
+        updateBanner = result;
+        if (!silent) {
           setNotice("info", result.message);
-          if (window.confirm(`发现新版本 ${result.latestVersion || "--"}，是否立即打开发布页？`)) {
-            await openReleaseByResult(result);
-          }
+          tab = "system";
         }
         return;
       }
 
+      updateState = "latest";
+      updatePendingReady = false;
+      updateBanner = null;
       if (!silent) {
-        setNotice("info", result.message);
+        setNotice("success", result.message);
       }
     } catch (error) {
+      updateState = "error";
+      updatePendingReady = false;
       if (!silent) {
         setNotice("error", asErrorMessage(error));
       }
-    } finally {
-      checkingVersion = false;
+    }
+  };
+
+  const ensureUpdateCanProceed = (): boolean => {
+    if (!updatePendingReady) {
+      setNotice("info", "请先检查更新并确认有新版本可安装");
+      tab = "system";
+      return false;
+    }
+
+    if (!updateBlockedReason) {
+      return true;
+    }
+
+    if (hasUnsavedSettings) {
+      tab = "general";
+    } else {
+      tab = "templates";
+    }
+    setNotice("error", updateBlockedReason);
+    return false;
+  };
+
+  const startAppUpdateInstall = async (): Promise<void> => {
+    if (!ensureUpdateCanProceed()) {
+      return;
+    }
+
+    busy = true;
+    updateBanner = null;
+    updatePendingReady = false;
+    updateState = "downloading";
+    updateProgress = {
+      phase: "downloading",
+      version: updateInfo?.latestVersion || appVersion,
+      downloadedBytes: 0,
+      totalBytes: null,
+      message: `正在准备下载 v${updateInfo?.latestVersion || appVersion} 更新包...`
+    };
+
+    try {
+      await installAppUpdate();
+      setNotice("info", "更新包已开始安装，应用可能会自动关闭，请稍候");
+    } catch (error) {
+      busy = false;
+      updateState = "error";
+      updateProgress = {
+        phase: "error",
+        version: updateInfo?.latestVersion || appVersion,
+        downloadedBytes: 0,
+        totalBytes: null,
+        message: asErrorMessage(error, "安装更新失败，请重新检查后重试")
+      };
+      setNotice("error", updateProgress.message);
     }
   };
 
@@ -633,23 +842,23 @@
   };
 
   const confirmUpdateBanner = async (): Promise<void> => {
-    const banner = updateBanner;
-    updateBanner = null;
-    await openReleaseByResult(banner ?? undefined);
+    if (!updateBanner) {
+      return;
+    }
+    await startAppUpdateInstall();
   };
 
-  const openReleaseByResult = async (result?: ReleaseCheckResult): Promise<void> => {
+  const openReleaseByVersion = async (version?: string | null): Promise<void> => {
+    const targetVersion = version || updateInfo?.latestVersion || undefined;
     try {
-      await openReleasePage();
-      if (!result) {
-        setNotice("info", "已打开发布页，请下载最新安装包");
-      }
+      await openReleasePage(targetVersion || undefined);
+      setNotice("info", targetVersion ? `已打开 v${targetVersion} 的 Release 页面` : "已打开发布页");
     } catch (error) {
-      const fallback = result?.releaseUrl || "https://github.com/FB208/quickCV/releases";
+      const fallback = targetVersion
+        ? `https://github.com/FB208/quickCV/releases/tag/v${targetVersion}`
+        : "https://github.com/FB208/quickCV/releases";
       window.open(fallback, "_blank", "noopener,noreferrer");
-      if (!result) {
-        setNotice("info", "已通过浏览器打开发布页");
-      }
+      setNotice("info", "已通过浏览器打开发布页");
       if (error) {
         // fallback already handled
       }
@@ -666,11 +875,24 @@
     <div class="qc-version-pill">版本 {appVersion}</div>
   </header>
 
-  {#if updateBanner}
+  {#if updateState === "downloading" || updateState === "installing"}
+    <div class="update-banner progress">
+      <span class="ms-icon banner-icon">system_update</span>
+      <span class="banner-text">{updateProgress?.message || "正在处理更新，请稍候..."}</span>
+      {#if updateProgress?.phase === "downloading"}
+        <span class="banner-progress">
+          {formatBytes(updateProgress.downloadedBytes)}
+          {#if updateProgress.totalBytes}
+            / {formatBytes(updateProgress.totalBytes)}
+          {/if}
+        </span>
+      {/if}
+    </div>
+  {:else if updateBanner}
     <div class="update-banner">
       <span class="ms-icon banner-icon">system_update</span>
       <span class="banner-text">检测到新版本 <strong>{updateBanner.latestVersion || "--"}</strong>（当前 {updateBanner.currentVersion}）</span>
-      <button class="banner-btn confirm" on:click={() => void confirmUpdateBanner()}>前往下载</button>
+      <button class="banner-btn confirm" on:click={() => void confirmUpdateBanner()}>立即更新</button>
       <button class="banner-btn dismiss" on:click={dismissUpdateBanner}>忽略</button>
     </div>
   {/if}
@@ -770,10 +992,17 @@
       {#if tab === "system"}
         <SystemTab
           {appVersion}
-          {latestVersion}
-          {checkingVersion}
-          onRunReleaseCheck={() => void runReleaseCheck(false)}
-          onOpenReleasePage={() => void openReleaseByResult()}
+          isDevBuild={isDevBuild}
+          updateState={updateState}
+          updateInfo={updateInfo}
+          updateProgress={updateProgress}
+          lastUpdateCheckAt={settings.lastUpdateCheckAt}
+          recentlyUpdatedFromVersion={recentlyUpdatedFromVersion}
+          updatePendingReady={updatePendingReady}
+          updateBlockedReason={updateBlockedReason}
+          onRunAppUpdateCheck={() => void runAppUpdateCheck(false)}
+          onInstallAppUpdate={() => void startAppUpdateInstall()}
+          onOpenReleasePage={(version) => void openReleaseByVersion(version)}
           onOpenConfigFolder={() => void openConfigFolderHandler()}
         />
       {/if}
@@ -792,6 +1021,11 @@
     border: 1px solid #bbd9ee;
     box-shadow: 0 4px 16px rgba(44, 106, 162, 0.1);
     animation: bannerSlideIn 0.35s ease-out;
+  }
+
+  .update-banner.progress {
+    border-color: #8bb9e2;
+    background: linear-gradient(135deg, #e7f4ff 0%, #dff1ff 100%);
   }
 
   @keyframes bannerSlideIn {
@@ -819,6 +1053,12 @@
 
   .banner-text strong {
     color: #135d95;
+  }
+
+  .banner-progress {
+    font-size: 12px;
+    color: #3d6487;
+    white-space: nowrap;
   }
 
   .banner-btn {

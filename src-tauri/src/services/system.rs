@@ -5,9 +5,13 @@ use crate::release;
 use crate::storage;
 use crate::tray;
 
-pub fn open_release_page(app: &AppHandle) -> Result<(), String> {
+pub fn open_release_page(app: &AppHandle, version: Option<&str>) -> Result<(), String> {
+    let target_url = version
+        .map(release::release_tag_url)
+        .unwrap_or_else(|| release::RELEASE_PAGE_URL.to_string());
+
     app.opener()
-        .open_url(release::RELEASE_PAGE_URL, None::<&str>)
+        .open_url(target_url, None::<&str>)
         .map_err(|error| format!("打开发布页失败: {error}"))
 }
 

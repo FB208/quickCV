@@ -38,6 +38,8 @@ pub struct Settings {
     pub launch_at_startup_effective: bool,
     pub webdav: WebDavSettings,
     pub last_synced_version: i64,
+    pub last_update_check_at: i64,
+    pub last_seen_app_version: String,
     pub device_id: String,
 }
 
@@ -49,6 +51,8 @@ impl Default for Settings {
             launch_at_startup_effective: false,
             webdav: WebDavSettings::default(),
             last_synced_version: 0,
+            last_update_check_at: 0,
+            last_seen_app_version: String::new(),
             device_id: String::new(),
         }
     }
@@ -117,13 +121,33 @@ pub struct SyncResult {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ReleaseCheckResult {
+pub struct AppUpdateCheckResult {
     pub status: String,
     pub has_update: bool,
     pub message: String,
     pub current_version: String,
     pub latest_version: Option<String>,
     pub release_url: String,
+    pub release_notes: String,
+    pub published_at: Option<String>,
+    pub last_check_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppUpdateWelcome {
+    pub previous_version: String,
+    pub current_version: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppUpdateProgressEvent {
+    pub phase: String,
+    pub version: String,
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub message: String,
 }
 
 #[derive(Debug, Clone)]

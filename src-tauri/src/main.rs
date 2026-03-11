@@ -1,8 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod models;
 mod app_bootstrap;
 mod logger;
+mod models;
 mod overlay_window;
 mod paste;
 mod release;
@@ -13,9 +13,9 @@ mod tray;
 mod webdav;
 
 use models::{
-    ReleaseCheckResult, Settings, SyncResult, TemplateStore, WebDavSettings,
+    AppUpdateCheckResult, AppUpdateWelcome, Settings, SyncResult, TemplateStore, WebDavSettings,
 };
-use tauri::AppHandle;
+use tauri::{AppHandle, State};
 use tauri_plugin_autostart::MacosLauncher;
 
 use overlay_window::OverlayContext;
@@ -61,14 +61,34 @@ async fn sync_push(app: AppHandle) -> Result<SyncResult, String> {
 }
 
 #[tauri::command]
-async fn check_release_version(app: AppHandle) -> Result<ReleaseCheckResult, String> {
-    let current_version = app.package_info().version.to_string();
-    release::check_release_version(current_version).await
+async fn check_app_update(
+    app: AppHandle,
+    pending_update: State<'_, services::updater::PendingUpdate>,
+) -> Result<AppUpdateCheckResult, String> {
+    services::updater::check_app_update(&app, &pending_update).await
 }
 
 #[tauri::command]
-fn open_release_page(app: AppHandle) -> Result<(), String> {
-    services::system::open_release_page(&app)
+async fn install_app_update(
+    app: AppHandle,
+    pending_update: State<'_, services::updater::PendingUpdate>,
+) -> Result<(), String> {
+    services::updater::install_app_update(&app, &pending_update).await
+}
+
+#[tauri::command]
+fn peek_app_update_welcome(app: AppHandle) -> Result<Option<AppUpdateWelcome>, String> {
+    services::updater::peek_update_welcome(&app)
+}
+
+#[tauri::command]
+fn acknowledge_current_app_version(app: AppHandle) -> Result<(), String> {
+    services::updater::acknowledge_current_app_version(&app)
+}
+
+#[tauri::command]
+fn open_release_page(app: AppHandle, version: Option<String>) -> Result<(), String> {
+    services::system::open_release_page(&app, version.as_deref())
 }
 
 #[tauri::command]
@@ -120,8 +140,10 @@ fn open_main_templates(app: AppHandle) -> Result<(), String> {
 
 fn main() {
     tauri::Builder::default()
+        .manage(services::updater::PendingUpdate::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -144,7 +166,10 @@ fn main() {
             test_webdav,
             sync_pull,
             sync_push,
-            check_release_version,
+            check_app_update,
+            install_app_update,
+            peek_app_update_welcome,
+            acknowledge_current_app_version,
             open_release_page,
             open_config_folder,
             open_main_templates,

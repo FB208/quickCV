@@ -59,6 +59,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: quickCV ${{ github.ref_name }}
@@ -67,6 +69,10 @@ jobs:
 
             - 平台：Windows
             - 触发方式：push tag
-            - 产物：安装包（NSIS .exe）
+            - 产物：安装包（NSIS .exe）+ 软件内更新清单（latest.json）
+            - 说明：从首个桥接版开始，后续版本支持软件内更新
           releaseDraft: false
           prerelease: false
+          generateReleaseNotes: true
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true

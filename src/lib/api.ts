@@ -1,6 +1,7 @@
 import type {
+  AppUpdateCheckResult,
+  AppUpdateWelcome,
   OverlayContext,
-  ReleaseCheckResult,
   Settings,
   SyncResult,
   TemplateStore,
@@ -56,12 +57,24 @@ export const getAppVersion = async (): Promise<string> => {
   return invokeTauri<string>("get_app_version");
 };
 
-export const checkReleaseVersion = async (): Promise<ReleaseCheckResult> => {
-  return invokeTauri<ReleaseCheckResult>("check_release_version");
+export const checkAppUpdate = async (): Promise<AppUpdateCheckResult> => {
+  return invokeTauri<AppUpdateCheckResult>("check_app_update");
 };
 
-export const openReleasePage = async (): Promise<void> => {
-  return invokeTauri<void>("open_release_page");
+export const installAppUpdate = async (): Promise<void> => {
+  return invokeTauri<void>("install_app_update");
+};
+
+export const peekAppUpdateWelcome = async (): Promise<AppUpdateWelcome | null> => {
+  return invokeTauri<AppUpdateWelcome | null>("peek_app_update_welcome");
+};
+
+export const acknowledgeCurrentAppVersion = async (): Promise<void> => {
+  return invokeTauri<void>("acknowledge_current_app_version");
+};
+
+export const openReleasePage = async (version?: string): Promise<void> => {
+  return invokeTauri<void>("open_release_page", { version });
 };
 
 export const openConfigFolder = async (): Promise<void> => {

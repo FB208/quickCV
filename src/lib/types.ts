@@ -11,6 +11,8 @@ export interface Settings {
   launchAtStartupEffective: boolean;
   webdav: WebDavSettings;
   lastSyncedVersion: number;
+  lastUpdateCheckAt: number;
+  lastSeenAppVersion: string;
   deviceId: string;
 }
 
@@ -57,11 +59,27 @@ export interface OverlayContext {
   query: string;
 }
 
-export interface ReleaseCheckResult {
-  status: "ok" | "error";
+export interface AppUpdateCheckResult {
+  status: "available" | "latest" | "error";
   hasUpdate: boolean;
   message: string;
   currentVersion: string;
   latestVersion: string | null;
   releaseUrl: string;
+  releaseNotes: string;
+  publishedAt: string | null;
+  lastCheckAt: number;
+}
+
+export interface AppUpdateWelcome {
+  previousVersion: string;
+  currentVersion: string;
+}
+
+export interface AppUpdateProgressEvent {
+  phase: "downloading" | "installing" | "finished" | "error";
+  version: string;
+  downloadedBytes: number;
+  totalBytes: number | null;
+  message: string;
 }
