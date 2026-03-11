@@ -65,11 +65,12 @@ jobs:
             throw "缺少 GitHub Secret: TAURI_SIGNING_PRIVATE_KEY"
           }
 
-          Add-Content -Path $env:GITHUB_ENV -Value "TAURI_SIGNING_PRIVATE_KEY<<EOF"
-          Add-Content -Path $env:GITHUB_ENV -Value $env:RAW_TAURI_SIGNING_PRIVATE_KEY
-          Add-Content -Path $env:GITHUB_ENV -Value "EOF"
+          $privateKeyPath = Join-Path $env:RUNNER_TEMP "quickcv-updater.key"
+          [System.IO.File]::WriteAllText($privateKeyPath, $env:RAW_TAURI_SIGNING_PRIVATE_KEY, [System.Text.UTF8Encoding]::new($false))
+          Add-Content -Path $env:GITHUB_ENV -Value "TAURI_SIGNING_PRIVATE_KEY_PATH=$privateKeyPath"
 
           if (-not [string]::IsNullOrWhiteSpace($env:RAW_TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
+            Write-Host "::warning::检测到 TAURI_SIGNING_PRIVATE_KEY_PASSWORD 已设置，若当前私钥为无密码私钥，请删除该 Secret。"
             Add-Content -Path $env:GITHUB_ENV -Value "TAURI_SIGNING_PRIVATE_KEY_PASSWORD<<EOF"
             Add-Content -Path $env:GITHUB_ENV -Value $env:RAW_TAURI_SIGNING_PRIVATE_KEY_PASSWORD
             Add-Content -Path $env:GITHUB_ENV -Value "EOF"
