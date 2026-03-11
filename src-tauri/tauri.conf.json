@@ -53,7 +53,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY0ODUxMkM3MkIzRjAzOTUKUldTVkF6OHJ4eEtGWkhyQmZKVGpYeEZkMyszczV5bnhaTGtEeld3M3BTSStUcjhPV3NlTHVOQUQK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZCNDkwQkY2OEQwMkM2NkIKUldScnhnS045Z3RKYS9tVnp6d09FSEJXRFNCRkFQNkZaTXhTQXpKZXYwWnM2TjNQWjE2U25iTXoK",
       "endpoints": [
         "https://github.com/FB208/quickCV/releases/latest/download/latest.json"
       ],
