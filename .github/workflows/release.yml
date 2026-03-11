@@ -51,16 +51,38 @@ jobs:
             tauri.version = version;
             fs.writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(tauri, null, 2) + '\n');
             let cargo = fs.readFileSync('src-tauri/Cargo.toml', 'utf8');
-            cargo = cargo.replace(/^version\s*=\s*\"[^\"]+\"/m, 'version = \"' + version + '\"');
-            fs.writeFileSync('src-tauri/Cargo.toml', cargo);
-          "
+             cargo = cargo.replace(/^version\s*=\s*\"[^\"]+\"/m, 'version = \"' + version + '\"');
+             fs.writeFileSync('src-tauri/Cargo.toml', cargo);
+           "
+
+      - name: Prepare updater signing env
+        shell: pwsh
+        env:
+          RAW_TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          RAW_TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:RAW_TAURI_SIGNING_PRIVATE_KEY)) {
+            throw "缺少 GitHub Secret: TAURI_SIGNING_PRIVATE_KEY"
+          }
+
+          @"
+          TAURI_SIGNING_PRIVATE_KEY<<EOF
+          $env:RAW_TAURI_SIGNING_PRIVATE_KEY
+          EOF
+          "@ | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          if (-not [string]::IsNullOrWhiteSpace($env:RAW_TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
+            @"
+            TAURI_SIGNING_PRIVATE_KEY_PASSWORD<<EOF
+            $env:RAW_TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+            EOF
+            "@ | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
 
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: quickCV ${{ github.ref_name }}

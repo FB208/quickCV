@@ -58,7 +58,9 @@ npm run tauri build
 - 工作流文件：`.github/workflows/release.yml`
 - 触发方式：推送标签（例如 `v0.1.0`）
 - 产物发布到 GitHub Releases，并生成 `latest.json` 供软件内更新使用
-- 需要配置 GitHub Secrets：`TAURI_SIGNING_PRIVATE_KEY`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`（如私钥无密码可留空）
+- 需要配置 GitHub Secret：`TAURI_SIGNING_PRIVATE_KEY`
+- 如私钥本身带密码，再额外配置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+- 如果你生成的是“无密码私钥”，不要创建 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`，否则会出现 `failed to decode secret key` / `Wrong password for that key`
 - 首个支持软件内更新的版本属于桥接版，老用户仍需手动安装一次；此后即可在软件内更新
 
 ## 目录说明
