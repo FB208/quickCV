@@ -55,31 +55,44 @@ jobs:
              fs.writeFileSync('src-tauri/Cargo.toml', cargo);
            "
 
-      - name: Prepare updater signing env
+      - name: Validate updater signing secret
         shell: pwsh
         env:
           RAW_TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          RAW_TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:RAW_TAURI_SIGNING_PRIVATE_KEY)) {
             throw "缺少 GitHub Secret: TAURI_SIGNING_PRIVATE_KEY"
           }
 
-          $privateKeyPath = Join-Path $env:RUNNER_TEMP "quickcv-updater.key"
-          [System.IO.File]::WriteAllText($privateKeyPath, $env:RAW_TAURI_SIGNING_PRIVATE_KEY, [System.Text.UTF8Encoding]::new($false))
-          Add-Content -Path $env:GITHUB_ENV -Value "TAURI_SIGNING_PRIVATE_KEY_PATH=$privateKeyPath"
-
-          if (-not [string]::IsNullOrWhiteSpace($env:RAW_TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) {
-            Write-Host "::warning::检测到 TAURI_SIGNING_PRIVATE_KEY_PASSWORD 已设置，若当前私钥为无密码私钥，请删除该 Secret。"
-            Add-Content -Path $env:GITHUB_ENV -Value "TAURI_SIGNING_PRIVATE_KEY_PASSWORD<<EOF"
-            Add-Content -Path $env:GITHUB_ENV -Value $env:RAW_TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-            Add-Content -Path $env:GITHUB_ENV -Value "EOF"
-          }
-
       - name: Build and publish release
+        if: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD == '' }}
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: quickCV ${{ github.ref_name }}
+          releaseBody: |
+            quickCV 自动构建发布
+
+            - 平台：Windows
+            - 触发方式：push tag
+            - 产物：安装包（NSIS .exe）+ 软件内更新清单（latest.json）
+            - 说明：从首个桥接版开始，后续版本支持软件内更新
+          releaseDraft: false
+          prerelease: false
+          generateReleaseNotes: true
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
+
+      - name: Build and publish release (password protected key)
+        if: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD != '' }}
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: quickCV ${{ github.ref_name }}
