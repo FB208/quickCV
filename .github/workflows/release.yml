@@ -32,6 +32,9 @@ jobs:
 
       - name: Cache Rust dependencies and build outputs
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> target
 
       - name: Install frontend dependencies
         run: npm ci
