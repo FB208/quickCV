@@ -178,14 +178,14 @@
   <section class="tpl-sync-bar">
     <div class="tpl-sync-left">
       <span class="ms-icon tpl-sync-icon">cloud_sync</span>
-      <span class="tpl-sync-ver">本地 <strong>{store.datasetVersion || 0}</strong></span>
+      <span class="tpl-sync-ver">本地数据版本 <strong>{store.datasetVersion || 0}</strong></span>
       <span class="tpl-sync-sep">|</span>
-      <span class="tpl-sync-ver">同步基线 <strong>{settings.lastSyncedVersion || 0}</strong></span>
+      <span class="tpl-sync-ver">上次同步版本 <strong>{settings.lastSyncedVersion || 0}</strong></span>
     </div>
     <div class="tpl-sync-right">
       <button class="qc-btn qc-btn-subtle tpl-sync-btn" disabled={busy} on:click={() => onRunSync("pull")}>
         <span class="ms-icon" class:syncing={busy && syncMode === "pull"}>{busy && syncMode === "pull" ? "sync" : "cloud_download"}</span>
-        {busy && syncMode === "pull" ? "拉取中..." : "拉取合并"}
+        {busy && syncMode === "pull" ? "同步中..." : "同步云端"}
       </button>
       <button class="qc-btn qc-btn-subtle tpl-sync-btn" disabled={busy} on:click={() => onRunSync("push")}>
         <span class="ms-icon" class:syncing={busy && syncMode === "push"}>{busy && syncMode === "push" ? "sync" : "cloud_upload"}</span>
@@ -284,7 +284,7 @@
               type="text"
               value={templateSearch}
               on:input={(event) => onTemplateSearchChange(asInputValue(event))}
-              placeholder="搜索模板名、key、内容…"
+              placeholder="搜索模板名、快捷标识、内容..."
               class="tpl-search"
             />
           </div>
@@ -377,7 +377,7 @@
 
               <label class="tpl-field">
                 <span class="tpl-field-label">
-                  <span class="ms-icon">key</span> 触发 Key <small>（可选，全局唯一）</small>
+                  <span class="ms-icon">key</span> 快捷标识 <small>（可选，不能重复）</small>
                 </span>
                 <input
                   type="text"

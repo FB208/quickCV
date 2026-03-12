@@ -24,7 +24,7 @@
 <section class="qc-panel qc-panel-page">
   <div class="qc-page-head">
     <h2 class="qc-page-title"><span class="ms-icon">tune</span>常规设置</h2>
-    <p class="qc-page-desc">统一管理快捷键、启动行为与 WebDAV 同步参数。</p>
+    <p class="qc-page-desc">统一管理快捷键、启动方式和云同步设置。</p>
   </div>
 
   <div class="general-grid">
@@ -72,7 +72,7 @@
     </section>
 
     <section class="qc-card general-card">
-      <h3 class="qc-card-title"><span class="ms-icon">cloud_sync</span>WebDAV 配置</h3>
+      <h3 class="qc-card-title"><span class="ms-icon">cloud_sync</span>云同步设置</h3>
       <label class="qc-field">
         <span>地址</span>
         <input
@@ -107,7 +107,7 @@
       </label>
 
       <label class="qc-field">
-        <span>远端文件名</span>
+        <span>云端文件名称</span>
         <input
           class="qc-input"
           type="text"
@@ -120,7 +120,7 @@
       <div class="qc-actions">
         <button class="qc-btn qc-btn-subtle" disabled={busy} on:click={onRunWebDavTest}>
           <span class="ms-icon">network_check</span>
-          测试 WebDAV 连通性
+          测试云同步连接
         </button>
       </div>
     </section>

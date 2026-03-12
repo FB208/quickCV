@@ -360,7 +360,7 @@
         class="qc-input"
         bind:this={searchInput}
         bind:value={query}
-        placeholder="搜索文件夹 / 模板名称 / key / 内容"
+        placeholder="搜索文件夹 / 模板名称 / 快捷标识 / 内容"
         on:input={() => (focusPane = "templates")}
       />
       <button class="qc-btn qc-btn-subtle ghost" disabled={busy} on:click={() => void openSettingsFromOverlay()}>

@@ -9,7 +9,7 @@ pub async fn sync_pull(app: &AppHandle) -> Result<SyncResult, String> {
     logger::info(app, "sync", "sync_pull command start");
     let mut settings = storage::load_settings(app)?;
     if settings.webdav.url.trim().is_empty() {
-        return Err("请先在设置中填写 WebDAV 地址".to_string());
+        return Err("请先在设置中填写云同步地址".to_string());
     }
 
     let local_store = storage::load_template_store(app)?;
@@ -38,7 +38,7 @@ pub async fn sync_pull(app: &AppHandle) -> Result<SyncResult, String> {
             blocked: false,
             level: "warn".to_string(),
             message: format!(
-                "云端未找到远端文件（404）：{}，暂无可拉取数据；可先推送初始化云端文件",
+                "云端还没有可同步的内容，你可以先上传一次本地数据。当前文件：{}",
                 if remote_file.is_empty() {
                     "quickcv-data.json"
                 } else {
@@ -89,17 +89,17 @@ pub async fn sync_pull(app: &AppHandle) -> Result<SyncResult, String> {
         || !report.key_conflicts.is_empty();
     let message = if changed {
         let mut base = format!(
-            "已从云端拉取并自动合并（文件夹 {}→{}，模板 {}→{}）",
+            "已完成云端同步（文件夹 {} -> {}，模板 {} -> {}）",
             local_before.0, merged_after.0, local_before.1, merged_after.1
         );
         if merged_differs_from_remote {
-            base.push_str("，并已回写云端版本");
+            base.push_str("，同步结果已更新到云端");
         }
-        base.push_str(&format!("，版本已对齐为 {}", merged.dataset_version));
+        base.push_str(&format!("，当前数据版本 {}", merged.dataset_version));
         base
     } else {
         format!(
-            "已拉取并完成合并，数据无变更，版本已对齐为 {}",
+            "已完成同步，当前内容已是最新（数据版本 {}）",
             merged.dataset_version
         )
     };
@@ -121,7 +121,7 @@ pub async fn sync_push(app: &AppHandle) -> Result<SyncResult, String> {
     logger::info(app, "sync", "sync_push command start");
     let mut settings = storage::load_settings(app)?;
     if settings.webdav.url.trim().is_empty() {
-        return Err("请先在设置中填写 WebDAV 地址".to_string());
+        return Err("请先在设置中填写云同步地址".to_string());
     }
 
     let mut local_store = storage::load_template_store(app)?;
@@ -143,7 +143,7 @@ pub async fn sync_push(app: &AppHandle) -> Result<SyncResult, String> {
             blocked: true,
             level: "warn".to_string(),
             message: format!(
-                "云端版本 {} 新于本地同步版本 {}，请先拉取后再推送",
+                "云端内容已有更新，请先同步最新内容后再上传本地修改（云端版本 {}，本地同步版本 {}）",
                 remote_version, settings.last_synced_version
             ),
             local_version: local_store.dataset_version,
@@ -170,7 +170,7 @@ pub async fn sync_push(app: &AppHandle) -> Result<SyncResult, String> {
     let result = SyncResult {
         blocked: false,
         level: "success".to_string(),
-        message: "已推送到云端".to_string(),
+        message: "已上传到云端".to_string(),
         local_version: local_store.dataset_version,
         remote_version: local_store.dataset_version,
         conflict_copies: Vec::new(),

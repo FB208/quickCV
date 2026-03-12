@@ -59,7 +59,7 @@ pub async fn check_app_update(
     {
         Ok(value) => value,
         Err(error) => {
-            let message = format!("创建更新检查器失败: {error}");
+            let message = format!("暂时无法检查更新，请稍后再试: {error}");
             logger::error(app, "updater", &message);
             clear_pending_update(pending_update)?;
             return Ok(error_result(current_version, last_check_at, message));
@@ -69,7 +69,7 @@ pub async fn check_app_update(
     let update = match updater.check().await {
         Ok(value) => value,
         Err(error) => {
-            let message = format!("检查更新失败: {error}");
+            let message = format!("检查更新失败，请稍后再试: {error}");
             logger::error(app, "updater", &message);
             clear_pending_update(pending_update)?;
             return Ok(error_result(current_version, last_check_at, message));
@@ -93,7 +93,7 @@ pub async fn check_app_update(
                     .and_then(|value| value.as_str())
                     .map(|value| value.to_string())
             })
-            .unwrap_or_else(|| "本次版本未提供更新说明。".to_string());
+            .unwrap_or_else(|| "本次更新暂未提供说明。".to_string());
         let published_at = update
             .raw_json
             .get("pub_date")

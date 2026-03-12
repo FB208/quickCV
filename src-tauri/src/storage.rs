@@ -328,7 +328,7 @@ pub fn validate_template_keys(store: &TemplateStore) -> Result<(), String> {
 
         if let Some(other_name) = key_map.get(key) {
             return Err(format!(
-                "模板 key 重复: {key}，涉及模板「{}」和「{}」",
+                "模板快捷标识重复：“{key}” 已被“{}”和“{}”使用",
                 other_name, item.name
             ));
         }
@@ -352,7 +352,7 @@ fn write_json<T>(path: PathBuf, value: &T) -> Result<(), String>
 where
     T: serde::Serialize,
 {
-    let text = serde_json::to_string_pretty(value)
-        .map_err(|error| format!("序列化 JSON 失败: {error}"))?;
+    let text =
+        serde_json::to_string_pretty(value).map_err(|error| format!("保存数据失败: {error}"))?;
     fs::write(&path, text).map_err(|error| format!("写入文件失败 {}: {error}", path.display()))
 }

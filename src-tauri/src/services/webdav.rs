@@ -19,5 +19,5 @@ pub async fn test_webdav(
             error
         })?;
     logger::info(app, "webdav", "test_webdav command success");
-    Ok("WebDAV 连通成功".to_string())
+    Ok("云同步连接正常".to_string())
 }

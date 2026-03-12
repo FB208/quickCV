@@ -183,7 +183,7 @@
 
   const getUpdateBlockedReason = (): string => {
     if (syncMode) {
-      return "正在执行 WebDAV 同步，请稍后再更新";
+      return "正在进行云同步，请稍后再更新";
     }
     if (busy && (updateState === "downloading" || updateState === "installing")) {
       return "更新处理中，请勿重复操作";
@@ -358,7 +358,7 @@
         requestedLaunchAtStartup !== settings.launchAtStartup ||
         settings.launchAtStartup !== settings.launchAtStartupEffective
       ) {
-        setNotice("info", "设置已保存，但开机启动状态更新失败，请查看日志");
+        setNotice("info", "设置已保存，但开机启动暂未生效，请稍后重试");
         return;
       }
       setNotice("success", "设置已保存");
@@ -520,7 +520,7 @@
         (item) => item.deletedAt === null && item.id !== templateDraft?.id && (item.key || "").trim() === key
       );
       if (exists) {
-        setNotice("error", `模板 key「${key}」已存在，请更换`);
+        setNotice("error", `模板快捷标识“${key}”已被使用，请换一个`);
         return;
       }
     }
@@ -657,10 +657,10 @@
   const runSync = async (mode: "pull" | "push"): Promise<void> => {
     busy = true;
     syncMode = mode;
-    syncStage = mode === "pull" ? "正在从云端拉取并合并数据..." : "正在推送本地数据到云端...";
+    syncStage = mode === "pull" ? "正在同步云端内容..." : "正在上传本地内容...";
     try {
       const result: SyncResult = mode === "pull" ? await syncPull() : await syncPush();
-      syncStage = "正在刷新本地数据...";
+      syncStage = "正在更新内容，请稍候...";
       syncRuntimeSettings(await loadSettings());
       store = await loadTemplateStore();
       const noticeLevel: NoticeType = result.blocked
@@ -684,7 +684,7 @@
       details.push(`冲突副本 ${result.conflictCopies.length} 条`);
     }
     if (result.keyConflicts.length > 0) {
-      details.push(`key 冲突 ${result.keyConflicts.length} 条`);
+      details.push(`快捷标识重复 ${result.keyConflicts.length} 项`);
     }
     return details.join("，");
   };
@@ -852,13 +852,13 @@
     const targetVersion = version || updateInfo?.latestVersion || undefined;
     try {
       await openReleasePage(targetVersion || undefined);
-      setNotice("info", targetVersion ? `已打开 v${targetVersion} 的 Release 页面` : "已打开发布页");
+      setNotice("info", targetVersion ? `已打开 v${targetVersion} 的版本下载页` : "已打开版本下载页");
     } catch (error) {
       const fallback = targetVersion
         ? `https://github.com/FB208/quickCV/releases/tag/v${targetVersion}`
         : "https://github.com/FB208/quickCV/releases";
       window.open(fallback, "_blank", "noopener,noreferrer");
-      setNotice("info", "已通过浏览器打开发布页");
+      setNotice("info", "已通过浏览器打开版本下载页");
       if (error) {
         // fallback already handled
       }
@@ -870,7 +870,7 @@
   <header class="qc-topbar">
     <div class="qc-brand">
       <h1>quickCV</h1>
-      <p>轻量级模板插入管理工具</p>
+      <p>快捷文本与模板管理工具</p>
     </div>
     <div class="qc-version-pill">版本 {appVersion}</div>
   </header>

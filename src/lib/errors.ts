@@ -1,4 +1,4 @@
-export const asErrorMessage = (error: unknown, fallback = "发生未知错误，请查看日志"): string => {
+export const asErrorMessage = (error: unknown, fallback = "出现异常，请稍后重试"): string => {
   if (error instanceof Error) {
     const message = error.message.trim();
     if (message) {

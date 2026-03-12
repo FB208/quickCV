@@ -66,9 +66,9 @@
       return updateInfo.message;
     }
     if (isDevBuild) {
-      return "当前是开发模式，默认不会在启动时自动检查更新。";
+      return "当前版本启动时不会自动检查更新。";
     }
-    return "可手动检查新版本，或等待应用启动时静默检查。";
+    return "你可以手动检查更新，应用也会在启动后自动检查。";
   };
 
   const resolveStatusTone = (): "neutral" | "success" | "warn" | "error" => {
@@ -111,7 +111,7 @@
 <section class="qc-panel qc-panel-page">
   <div class="qc-page-head">
     <h2 class="qc-page-title"><span class="ms-icon">computer</span>系统</h2>
-    <p class="qc-page-desc">查看版本状态、检查更新、跟踪下载进度，并保留发布页兜底入口。</p>
+    <p class="qc-page-desc">查看当前版本、检查更新，并在需要时前往下载页获取新版。</p>
   </div>
 
   <div class="system-grid">
@@ -124,7 +124,7 @@
     <div class="version-card">
       <span class="version-label">最新线上版本</span>
       <strong>{latestVersionText}</strong>
-      <small>稳定通道 GitHub Releases</small>
+      <small>来自官方稳定版本</small>
     </div>
 
     {#if recentlyUpdatedFromVersion}
@@ -140,13 +140,13 @@
     <section class="qc-card system-card">
       <div class="system-card-head">
         <div>
-          <h3 class="qc-card-title"><span class="ms-icon">system_update</span>软件内更新</h3>
+          <h3 class="qc-card-title"><span class="ms-icon">system_update</span>软件更新</h3>
           <p class={`status-pill ${statusTone}`}>{statusText}</p>
         </div>
         <div class="meta-stack">
           <span>上次检查：{lastCheckAtText}</span>
           {#if isDevBuild}
-            <span>当前为开发模式，启动时默认不自动检查</span>
+            <span>当前版本启动时不会自动检查更新</span>
           {/if}
         </div>
       </div>
@@ -169,11 +169,11 @@
         </button>
         <button class="qc-btn qc-btn-subtle" on:click={() => onOpenReleasePage(updateInfo?.latestVersion || undefined)}>
           <span class="ms-icon">open_in_new</span>
-          打开 Release 页面
+          打开版本下载页
         </button>
         <button class="qc-btn qc-btn-subtle" on:click={onOpenConfigFolder}>
           <span class="ms-icon">folder_open</span>
-          打开配置文件夹
+          查看本地数据位置
         </button>
       </div>
 
@@ -217,19 +217,19 @@
         </div>
         <div class="detail-item">
           <span>更新源</span>
-          <strong>GitHub Releases / stable</strong>
+          <strong>官方稳定版本</strong>
         </div>
       </div>
 
       <div class="notes-card">
         <div class="notes-head">
           <strong>更新说明</strong>
-          <small>发布说明会跟随 updater 的 `latest.json` 返回。</small>
+          <small>检测到新版本后，这里会显示对应的更新说明。</small>
         </div>
         <pre>{releaseNotes}</pre>
       </div>
 
-      <p class="hint">如果应用内下载失败，仍可通过 Release 页面手动下载安装桥接版或最新版本。</p>
+      <p class="hint">如果应用内更新失败，你也可以前往版本下载页手动安装最新版本。</p>
     </section>
   </div>
 </section>

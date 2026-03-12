@@ -38,7 +38,7 @@ fn send_paste_shortcut_once() -> Result<(), String> {
 }
 
 fn simulate_event(event: EventType) -> Result<(), String> {
-    simulate(&event).map_err(|error| format!("模拟输入失败: {error}"))?;
+    simulate(&event).map_err(|error| format!("自动粘贴失败，请切回目标窗口后重试: {error}"))?;
     thread::sleep(Duration::from_millis(7));
     Ok(())
 }
