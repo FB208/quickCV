@@ -1,12 +1,18 @@
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 pub fn show_main_window(app: &AppHandle) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("main") {
         window.show()?;
         window.set_focus()?;
     }
+    Ok(())
+}
+
+pub fn show_main_window_with_tab(app: &AppHandle, tab: &str) -> tauri::Result<()> {
+    show_main_window(app)?;
+    app.emit_to("main", "navigate_main_tab", tab)?;
     Ok(())
 }
 
@@ -24,7 +30,7 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "open" => {
-                let _ = show_main_window(app);
+                let _ = show_main_window_with_tab(app, "general");
             }
             "quit" => {
                 app.exit(0);
@@ -38,7 +44,7 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                 ..
             } = event
             {
-                let _ = show_main_window(&tray.app_handle());
+                let _ = show_main_window_with_tab(&tray.app_handle(), "general");
             }
         })
         .build(app)?;

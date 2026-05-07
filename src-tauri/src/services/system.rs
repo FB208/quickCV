@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt as _;
 
 use crate::release;
@@ -23,7 +23,6 @@ pub fn open_config_folder(app: &AppHandle) -> Result<(), String> {
 }
 
 pub fn open_main_templates(app: &AppHandle) -> Result<(), String> {
-    tray::show_main_window(app).map_err(|error| format!("打开设置页失败: {error}"))?;
-    app.emit_to("main", "navigate_main_tab", "templates")
-        .map_err(|error| format!("切换到模板管理失败: {error}"))
+    tray::show_main_window_with_tab(app, "templates")
+        .map_err(|error| format!("打开设置页失败: {error}"))
 }
